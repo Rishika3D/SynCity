@@ -1,0 +1,29 @@
+import Link from 'next/link';
+
+export const metadata = { title: 'Analytics — SYNCITY' };
+
+export default function AnalyticsPage() {
+  return (
+    <main className="min-h-screen bg-[#F5F6F8] flex flex-col items-center justify-center gap-8">
+      <div className="text-center space-y-3">
+        <p className="text-[10px] tracking-[0.35em] uppercase text-[#1A1A1A]/35">
+          Module · 02
+        </p>
+        <h1 className="text-4xl font-bold tracking-[0.2em] text-[#1A1A1A]">
+          ANALYTICS
+        </h1>
+        <p className="text-sm text-[#1A1A1A]/40 tracking-wide">
+          Real-time infrastructure dashboards — coming soon
+        </p>
+      </div>
+      <Link
+        href="/"
+        className="text-[11px] font-medium tracking-[0.3em] uppercase text-[#1A1A1A]/40
+                   border border-[#1A1A1A]/12 px-5 py-2.5 hover:text-[#1A1A1A]
+                   hover:border-[#1A1A1A]/25 transition-all duration-300"
+      >
+        ← Back
+      </Link>
+    </main>
+  );
+}
