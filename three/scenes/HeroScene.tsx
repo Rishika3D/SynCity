@@ -12,14 +12,20 @@ import type { MousePosition } from '@/hooks/useMouseParallax';
 
 function CameraRig({ mouse }: { mouse: MousePosition }) {
   const { camera, viewport } = useThree();
-  useFrame(() => {
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+
     // Portrait (mobile) — slightly higher and farther for balanced composition
     const portrait = viewport.aspect < 1;
     const baseY = portrait ? 11  : 9;
     const baseZ = portrait ? 30  : 26;
 
-    camera.position.x += (mouse.x * 2.0 - camera.position.x) * 0.032;
-    camera.position.y += (mouse.y * 1.0 + baseY - camera.position.y) * 0.032;
+    // Slow idle drift — scene breathes when mouse is at rest
+    const idleX = Math.sin(t * 0.11) * 0.45;
+    const idleY = Math.sin(t * 0.07) * 0.22;
+
+    camera.position.x += (mouse.x * 2.0 + idleX - camera.position.x) * 0.028;
+    camera.position.y += (mouse.y * 1.0 + baseY + idleY - camera.position.y) * 0.028;
     camera.position.z += (baseZ - camera.position.z) * 0.05;
     camera.lookAt(0, 2.5, 0);
   });

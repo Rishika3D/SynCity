@@ -1,6 +1,4 @@
 node_modules/
 .next/
-.claude/
-worktrees/
 *.tsbuildinfo
 .DS_Store
