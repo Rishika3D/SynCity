@@ -2,47 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Custom properties ─────────────────────────────────────────── */
+/* ─── Obsidian Design Tokens ─────────────────────────────────────────── */
 :root {
-  --color-bg:    #0B0C10;
-  --color-pearl: #F2EDE4;
-  --font-serif:  var(--font-playfair), Georgia, serif;
-  --font-sans:   var(--font-space-grotesk), system-ui, sans-serif;
-  --font-mono:   var(--font-space-mono), monospace;
+  /* Backgrounds */
+  --obsidian:       #09090b;
+  --obsidian-mid:   #111116;
+  --obsidian-light: #18181f;
+
+  /* Text */
+  --text-primary:   #f5f5f7;
+  --text-secondary: rgba(245,245,247,0.5);
+  --text-tertiary:  rgba(245,245,247,0.25);
+
+  /* Hairlines */
+  --line:           rgba(255,255,255,0.07);
+  --line-strong:    rgba(255,255,255,0.12);
+
+  /* Fonts */
+  --font-display: var(--font-playfair), 'Playfair Display', Georgia, serif;
+  --font-serif:   var(--font-playfair), 'Playfair Display', Georgia, serif;
+  --font-sans:    var(--font-inter),    'Inter', system-ui, sans-serif;
+
+  /* Legacy — kept so older components compile */
+  --color-navy:       #09090b;
+  --color-gold:       rgba(245,245,247,0.4);
+  --color-parchment:  #f5f5f7;
 }
 
-/* ─── Base reset ─────────────────────────────────────────────────── */
+/* ─── Base reset ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   overflow-x: hidden;
-  background-color: var(--color-bg);
-  color: var(--color-pearl);
+  background-color: var(--obsidian);
+  color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Frosted glass — dark variant ──────────────────────────────── */
-.glass-dark {
-  background: rgba(11, 12, 16, 0.62);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-  border-color: rgba(255, 255, 255, 0.07);
+/* ─── Glass panel — ultra-subtle ─────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
 }
 
-/* ─── Neon glow utilities ────────────────────────────────────────── */
-.glow-cyan  { text-shadow: 0 0 20px rgba(0, 238, 255, 0.6); }
-.glow-amber { text-shadow: 0 0 20px rgba(255, 119, 34, 0.6); }
+/* ─── Legacy aliases ─────────────────────────────────────────────────── */
+.glass-dark        { background: rgba(9,9,11,0.80); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border-color: var(--line); }
+.glass-renaissance { background: rgba(9,9,11,0.80); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-color: var(--line); }
+.parchment-card    { background: rgba(255,255,255,0.04); border: 1px solid var(--line); }
+.glow-gold         { text-shadow: 0 0 30px rgba(245,245,247,0.15); }
+.glow-ivory        { text-shadow: 0 0 30px rgba(245,245,247,0.12); }
+.rule-gold         { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--line-strong) 50%, transparent); }
 
-/* ─── Canvas ─────────────────────────────────────────────────────── */
+/* ─── Canvas ─────────────────────────────────────────────────────────── */
 canvas { display: block; outline: none; }
 
-/* ─── Scrollbar ──────────────────────────────────────────────────── */
+/* ─── Scrollbar ──────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }

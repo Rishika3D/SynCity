@@ -3,21 +3,21 @@
 /**
  * components/CityTerrain.tsx
  *
- * The ground plane for the Bangalore digital-twin scene.
- * Renders as a large circular disc with a custom GLSL shader.
+ * Realistic ground plane for the Bangalore miniature diorama.
  *
- * Day/Night adaptive:
- *   Night: dark cyberpunk base with neon grid, rim glow, topographic rings
- *   Day:   warm grey ground with subtle grid, natural blue tones
- *   Smooth transition via uDayFactor uniform from TimeOfDayContext.
+ * - Warm asphalt / earth tones — no neon, no sci-fi rings
+ * - Subtle road-block grid lines (muted, naturalistic)
+ * - Soft edge fade to transparent so the diorama appears to float
+ * - Receives all shadows from buildings, trees, and street props
+ * - uDayFactor shifts between warmer dawn/dusk and cooler midday tone
  */
 
-import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
-import { useTimeOfDay } from '@/contexts/TimeOfDayContext';
+import { useMemo, useEffect } from 'react';
+import { useFrame }                   from '@react-three/fiber';
+import * as THREE          from 'three';
+import { useTimeOfDay }   from '@/contexts/TimeOfDayContext';
 
-// ─── GLSL ─────────────────────────────────────────────────────────────────────
+// ─── Realistic ground shader ─────────────────────────────────────────────────
 
 const VERT = /* glsl */`
   varying vec3 vWorldPos;
@@ -25,80 +25,43 @@ const VERT = /* glsl */`
 
   void main() {
     vUv = uv;
-    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-    vWorldPos     = worldPos.xyz;
-    gl_Position   = projectionMatrix * viewMatrix * worldPos;
+    vec4 wp  = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
   }
 `;
 
 const FRAG = /* glsl */`
-  uniform vec3  uBaseColorNight;
-  uniform vec3  uBaseColorDay;
-  uniform vec3  uGridColorNight;
-  uniform vec3  uGridColorDay;
-  uniform vec3  uGlowColorNight;
-  uniform vec3  uGlowColorDay;
+  uniform vec3  uGroundA;    // dawn / warm tone
+  uniform vec3  uGroundB;    // midday / cool tone
+  uniform vec3  uGridColor;
   uniform float uGridStep;
   uniform float uRadius;
-  uniform float uTime;
-  uniform float uDayFactor;   // 0 = night, 1 = day
+  uniform float uDayFactor;
 
   varying vec3  vWorldPos;
   varying vec2  vUv;
 
-  float gridLine(vec2 pos, float step, float lineHalf) {
-    vec2  f = abs(fract(pos / step + 0.5) - 0.5) * step;
-    float d = min(f.x, f.y);
-    return 1.0 - smoothstep(0.0, lineHalf, d);
+  float gridLine(vec2 pos, float step, float halfWidth) {
+    vec2 f = abs(fract(pos / step + 0.5) - 0.5) * step;
+    return 1.0 - smoothstep(0.0, halfWidth, min(f.x, f.y));
   }
 
   void main() {
     float dist = length(vWorldPos.xz);
     float nd   = dist / uRadius;
 
-    // ── Interpolate palettes ───────────────────────────────────────────────
-    vec3 baseColor = mix(uBaseColorNight, uBaseColorDay, uDayFactor);
-    vec3 gridColor = mix(uGridColorNight, uGridColorDay, uDayFactor);
-    vec3 glowColor = mix(uGlowColorNight, uGlowColorDay, uDayFactor);
+    // ── Base colour — warm at low dayFactor (dawn/dusk), neutral at noon ──
+    vec3 base = mix(uGroundA, uGroundB, smoothstep(0.0, 1.0, uDayFactor));
 
-    // ── Grid ───────────────────────────────────────────────────────────────
-    float minor = gridLine(vWorldPos.xz, uGridStep,        0.06);
-    float major = gridLine(vWorldPos.xz, uGridStep * 5.0,  0.05);
+    // ── Subtle block-grid seam lines ──
+    float minor = gridLine(vWorldPos.xz, uGridStep,        0.04) * 0.06;
+    float major = gridLine(vWorldPos.xz, uGridStep * 10.0, 0.03) * 0.10;
 
-    // ── Topographic rings — dimmer during day ──────────────────────────────
-    float ringIntensity = mix(0.045, 0.015, uDayFactor);
-    float rings = abs(sin(nd * 22.0 + uTime * 0.08)) * ringIntensity
-                  * smoothstep(0.05, 0.55, nd)
-                  * smoothstep(1.0,  0.60, nd);
+    vec3 col = base + uGridColor * (minor + major);
 
-    // ── Animated radial data pulse — dimmer during day ─────────────────────
-    float pulseIntensity = mix(0.025, 0.008, uDayFactor);
-    float pulse = sin(nd * 12.0 - uTime * 0.9) * 0.5 + 0.5;
-    pulse *= pulseIntensity * smoothstep(0.15, 0.75, nd) * smoothstep(1.0, 0.7, nd);
-
-    // ── Rim glow — dimmer during day ──────────────────────────────────────
-    float rimStr = mix(0.60, 0.15, uDayFactor);
-    float rim    = smoothstep(0.68, 1.0, nd) * smoothstep(1.02, 0.78, nd);
-
-    // ── Centre hot-spot ──────────────────────────────────────────────────
-    float coreStr = mix(0.08, 0.02, uDayFactor);
-    float core    = smoothstep(4.0, 0.0, dist) * coreStr;
-
-    // ── Edge alpha fade ──────────────────────────────────────────────────
-    float alpha = smoothstep(1.01, 0.82, nd);
-
-    // ── Grid intensity — subtle during day ───────────────────────────────
-    float minorStr = mix(0.22, 0.10, uDayFactor);
-    float majorStr = mix(0.45, 0.18, uDayFactor);
-
-    // ── Compose ──────────────────────────────────────────────────────────
-    vec3 col = baseColor;
-    col += gridColor * minor * minorStr;
-    col += gridColor * major * majorStr;
-    col += gridColor * rings;
-    col += glowColor * pulse;
-    col += glowColor * rim   * rimStr;
-    col += glowColor * core;
+    // ── Soft circular vignette / edge fade ──
+    float alpha = smoothstep(1.02, 0.78, nd);
 
     gl_FragColor = vec4(col, alpha);
   }
@@ -120,19 +83,14 @@ export function CityTerrain({ radius = 700, gridStep = 10 }: CityTerrainProps) {
         vertexShader:   VERT,
         fragmentShader: FRAG,
         uniforms: {
-          // Night palette
-          uBaseColorNight: { value: new THREE.Color('#05050A') },
-          uGridColorNight: { value: new THREE.Color('#07192A') },
-          uGlowColorNight: { value: new THREE.Color('#00f3ff') },
-          // Day palette
-          uBaseColorDay:   { value: new THREE.Color('#3a3e48') },
-          uGridColorDay:   { value: new THREE.Color('#5a6270') },
-          uGlowColorDay:   { value: new THREE.Color('#7099bb') },
-          // Shared
+          // Warm terracotta-ochre at low sun — cool grey-green at midday
+          uGroundA:   { value: new THREE.Color('#c4a882') },
+          uGroundB:   { value: new THREE.Color('#9aaa96') },
+          // Grid seam colour (dark earthy tone)
+          uGridColor: { value: new THREE.Color('#706050') },
           uGridStep:  { value: gridStep },
           uRadius:    { value: radius   },
-          uTime:      { value: 0        },
-          uDayFactor: { value: 0        },
+          uDayFactor: { value: 0.5      },
         },
         transparent: true,
         depthWrite:  false,
@@ -141,73 +99,20 @@ export function CityTerrain({ radius = 700, gridStep = 10 }: CityTerrainProps) {
     [radius, gridStep],
   );
 
-  useFrame(({ clock }) => {
-    material.uniforms.uTime.value      = clock.getElapsedTime();
+  useFrame(() => {
     material.uniforms.uDayFactor.value = dayFactor;
   });
 
-  // Rim ring opacity adapts to day/night
-  const rimOpacity = THREE.MathUtils.lerp(0.14, 0.04, dayFactor);
+  useEffect(() => () => material.dispose(), [material]);
 
   return (
-    <group name="city-terrain">
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
-        renderOrder={0}
-      >
-        <circleGeometry args={[radius, 128]} />
-        <primitive object={material} attach="material" />
-      </mesh>
-
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.05, 0]}
-        renderOrder={1}
-      >
-        <ringGeometry args={[radius * 0.94, radius * 1.0, 128]} />
-        <meshBasicMaterial
-          color={dayFactor > 0.5 ? '#7099bb' : '#00f3ff'}
-          transparent
-          opacity={rimOpacity}
-          toneMapped={false}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.06, 0]}
-        renderOrder={2}
-      >
-        <ringGeometry args={[1.5, 3.5, 64]} />
-        <meshBasicMaterial
-          color={dayFactor > 0.5 ? '#7099bb' : '#00f3ff'}
-          transparent
-          opacity={THREE.MathUtils.lerp(0.35, 0.10, dayFactor)}
-          toneMapped={false}
-          depthWrite={false}
-        />
-      </mesh>
-
-      {[100, 200, 300, 400, 500].map((r) => (
-        <mesh
-          key={r}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.03, 0]}
-          renderOrder={1}
-        >
-          <ringGeometry args={[r - 0.25, r + 0.25, 128]} />
-          <meshBasicMaterial
-            color={dayFactor > 0.5 ? '#7099bb' : '#00f3ff'}
-            transparent
-            opacity={THREE.MathUtils.lerp(0.06, 0.02, dayFactor)}
-            toneMapped={false}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-    </group>
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, -0.02, 0]}
+      receiveShadow
+    >
+      <circleGeometry args={[radius, 128]} />
+      <primitive object={material} attach="material" />
+    </mesh>
   );
 }

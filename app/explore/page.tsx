@@ -1,17 +1,8 @@
 /**
- * app/explore/page.tsx  — Server Component
+ * app/explore/page.tsx — Obsidian Apple UI
  *
- * Reads the real Bangalore OSM dataset (data/realBangalore.json, 31 MB)
- * server-side, filters it down to renderable road types, and passes
- * the compact payload to the <CityView> client component for 3-D rendering.
- *
- * Why filter server-side?
- *   The raw JSON has 23 k roads.  Shipping all of them to the browser would
- *   create millions of ribbon-geometry vertices and saturate the GPU.
- *   By keeping only the major road categories (motorway → secondary) we get
- *   a rich city network (~500–900 ways) that renders at a solid frame-rate.
- *
- * Swap DATA_SOURCE to 'mock' during offline development.
+ * Server Component. Loads city data, renders Three.js CityView + floating UI.
+ * No glass panels, no colored borders. Pure floating typography on obsidian.
  */
 
 import fs   from 'fs';
@@ -26,168 +17,168 @@ import type { CityData, RoadWay } from '@/types/osm';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-/** Switch to 'mock' if realBangalore.json is not available (offline dev). */
 const DATA_SOURCE: 'real' | 'mock' = 'real';
 
-/**
- * Road types that are rendered as ribbon meshes.
- * Anything narrower than 'secondary' is skipped for rendering performance;
- * the BuildingGenerator still uses its own internal filter for building placement.
- */
 const RENDER_ROAD_TYPES = new Set([
   'motorway', 'motorway_link',
   'trunk',    'trunk_link',
   'primary',  'primary_link',
   'secondary',
-  'tertiary',   // include tertiary — good for building placement density
+  'tertiary',
 ]);
 
-/** Hard cap on road count sent to the client. */
 const MAX_ROADS = 1_200;
 
 // ─── Data loading ─────────────────────────────────────────────────────────────
 
 function loadCityData(): CityData {
-  if (DATA_SOURCE === 'mock') {
-    return mockBangalore as unknown as CityData;
-  }
+  if (DATA_SOURCE === 'mock') return mockBangalore as unknown as CityData;
 
   const jsonPath = path.join(process.cwd(), 'data', 'realBangalore.json');
-
   if (!fs.existsSync(jsonPath)) {
     console.warn('[explore] realBangalore.json not found — falling back to mock data.');
-    console.warn('[explore] Run: node scripts/fetchBangaloreData.mjs');
     return mockBangalore as unknown as CityData;
   }
 
   const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as CityData;
-
-  // Filter roads to renderable types and apply count cap
   const filteredRoads: RoadWay[] = (raw.roads as RoadWay[])
     .filter(r => RENDER_ROAD_TYPES.has(r.roadType))
     .slice(0, MAX_ROADS);
 
-  const cityData: CityData = {
-    ...raw,
-    roads:     filteredRoads,
-    buildings: [],   // buildings are generated procedurally by BuildingGenerator
-  };
+  const cityData: CityData = { ...raw, roads: filteredRoads, buildings: [] };
 
-  // ── Prompt 4: Generate urban hierarchy districts server-side ──
   const t0 = performance.now();
   cityData.districts = generateDistricts({
-    roads:        cityData.roads,
-    water:        cityData.water,
-    parks:        cityData.parks,
-    centre:       cityData.centre,
-    metresToUnit: cityData.metresToUnit,
-    bbox:         cityData.bbox,
+    roads: cityData.roads, water: cityData.water, parks: cityData.parks,
+    centre: cityData.centre, metresToUnit: cityData.metresToUnit, bbox: cityData.bbox,
   });
-  const dt = (performance.now() - t0).toFixed(1);
-  console.log(`[explore] Generated ${cityData.districts.length} districts in ${dt}ms`);
+  console.log(`[explore] Generated ${cityData.districts.length} districts in ${(performance.now() - t0).toFixed(1)}ms`);
 
-  // ── Prompt 4: Generate block subdivision from road network ──
   const t1 = performance.now();
   cityData.blocks = generateBlocks({
-    roads:        cityData.roads,
-    districts:    cityData.districts,
-    centre:       cityData.centre,
-    metresToUnit: cityData.metresToUnit,
+    roads: cityData.roads, districts: cityData.districts,
+    centre: cityData.centre, metresToUnit: cityData.metresToUnit,
   });
-  const dt1 = (performance.now() - t1).toFixed(1);
-  const totalLots = cityData.blocks.reduce((sum, b) => sum + b.lots.length, 0);
-  console.log(`[explore] Generated ${cityData.blocks.length} blocks (${totalLots} lots) in ${dt1}ms`);
+  const totalLots = cityData.blocks.reduce((s, b) => s + b.lots.length, 0);
+  console.log(`[explore] Generated ${cityData.blocks.length} blocks (${totalLots} lots) in ${(performance.now() - t1).toFixed(1)}ms`);
 
   return cityData;
 }
 
-// ─── UI components ────────────────────────────────────────────────────────────
+// ─── Top navigation ───────────────────────────────────────────────────────────
 
 function TopNav({ cityName }: { cityName: string }) {
+  const F = 'var(--font-inter)';
   return (
-    <nav
-      className="
-        absolute top-0 left-0 right-0 z-20
-        flex items-center justify-between
-        px-4 sm:px-8 py-3 sm:py-4
-        border-b border-white/6
-      "
-      style={{ background: 'rgba(11,12,16,0.62)', backdropFilter: 'blur(22px)' }}
-    >
+    <nav className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 sm:px-10 py-4 pointer-events-none">
       <Link
         href="/"
-        className="
-          font-mono text-[9.5px] tracking-[0.28em] uppercase
-          text-white/35 hover:text-white/70 transition-colors duration-300
-          flex items-center gap-2
-        "
+        className="pointer-events-auto flex items-center gap-2 transition-colors duration-300 hover:text-white/70"
+        style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.35em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.35)' }}
       >
-        <span className="text-white/20">←</span> BACK
+        ← Syncity
       </Link>
 
-      <span className="font-['Space_Mono'] text-[10px] tracking-[0.55em] uppercase text-white/30">
-        SYNCITY
+      <span style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.55em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.35)' }}>
+        Explore
       </span>
 
-      <span className="font-mono text-[9px] tracking-[0.28em] text-white/20 uppercase">
-        {cityName} · Twin
+      <span style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.2)' }}>
+        {cityName}
       </span>
     </nav>
   );
 }
 
+// ─── HUD stats ────────────────────────────────────────────────────────────────
+
 function HudStats({
   centre, roadCount, waterCount, parkCount, districtCount, blockCount, lotCount,
 }: {
-  centre: [number, number];
-  roadCount: number;
-  waterCount: number;
-  parkCount: number;
-  districtCount: number;
-  blockCount: number;
-  lotCount: number;
+  centre: [number, number]; roadCount: number; waterCount: number; parkCount: number;
+  districtCount: number; blockCount: number; lotCount: number;
 }) {
+  const F = 'var(--font-inter)';
+  const stats = [
+    { label: 'Districts', val: districtCount },
+    { label: 'Blocks',    val: blockCount.toLocaleString() },
+    { label: 'Lots',      val: lotCount.toLocaleString()   },
+    { label: 'Roads',     val: roadCount.toLocaleString()  },
+    { label: 'Water',     val: waterCount.toLocaleString() },
+    { label: 'Parks',     val: parkCount.toLocaleString()  },
+  ];
+
   return (
-    <div className="absolute top-20 left-4 sm:left-6 flex flex-col gap-1 pointer-events-none">
-      <p className="font-mono text-[8px] tracking-[0.3em] text-white/20 uppercase">
-        SYNCITY / EXPLORE
+    <div className="hidden sm:block absolute top-16 left-4 sm:left-6 z-20 pointer-events-none" style={{ minWidth: 160 }}>
+      {/* Coordinates */}
+      <p style={{ fontFamily: F, fontSize: '10px', color: 'rgba(245,245,247,0.55)', letterSpacing: '0.05em', marginBottom: '2px', fontVariantNumeric: 'tabular-nums' }}>
+        {centre[1].toFixed(3)}°N {centre[0].toFixed(3)}°E
       </p>
-      <p className="font-mono text-[9px] tracking-[0.18em] text-cyan-400/60">
-        {centre[1].toFixed(4)}°N · {centre[0].toFixed(4)}°E · LIVE
-      </p>
-      <div className="mt-2 flex flex-col gap-0.5">
-        {[
-          { label: 'DISTRICTS', val: districtCount },
-          { label: 'BLOCKS',    val: blockCount },
-          { label: 'LOTS',      val: lotCount },
-          { label: 'ROADS',     val: roadCount  },
-          { label: 'WATER',     val: waterCount },
-          { label: 'PARKS',     val: parkCount  },
-        ].map(({ label, val }) => (
-          <p key={label} className="font-mono text-[8px] tracking-[0.22em] text-white/18">
-            {label} <span className="text-white/38">{val.toLocaleString()}</span>
-          </p>
+      <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0' }} />
+
+      {/* Stats */}
+      <div className="flex flex-col gap-1">
+        {stats.map(({ label, val }) => (
+          <div key={label} className="flex items-center justify-between gap-8">
+            <span style={{ fontFamily: F, fontSize: '8px', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.25)' }}>
+              {label}
+            </span>
+            <span style={{ fontFamily: F, fontSize: '10px', color: 'rgba(245,245,247,0.5)', fontVariantNumeric: 'tabular-nums' }}>
+              {val}
+            </span>
+          </div>
         ))}
       </div>
-      <p className="mt-3 font-mono text-[7px] tracking-[0.2em] text-white/12 uppercase">
-        {DATA_SOURCE === 'real' ? '● OSM LIVE DATA' : '○ MOCK DATA'}
+
+      <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0' }} />
+      <p style={{ fontFamily: F, fontSize: '7px', letterSpacing: '0.2em', color: 'rgba(245,245,247,0.15)', textTransform: 'uppercase' }}>
+        {DATA_SOURCE === 'real' ? 'OSM Live' : 'Mock Data'}
       </p>
     </div>
   );
 }
 
+// ─── Layer selector ───────────────────────────────────────────────────────────
+
+function LayerSelector() {
+  const F = 'var(--font-inter)';
+  const layers = [
+    { label: 'Roads',       active: true  },
+    { label: 'Districts',   active: true  },
+    { label: 'Traffic',     active: false },
+    { label: 'Air Quality', active: false },
+    { label: 'Energy',      active: false },
+    { label: 'Weather',     active: false },
+  ];
+
+  return (
+    <div className="hidden sm:block absolute top-16 right-4 sm:right-6 z-20 pointer-events-none" style={{ minWidth: 130 }}>
+      <p style={{ fontFamily: F, fontSize: '8px', letterSpacing: '0.5em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.25)', marginBottom: '8px' }}>
+        Layers
+      </p>
+      <div className="flex flex-col gap-2">
+        {layers.map(({ label, active }) => (
+          <div key={label} className="flex items-center justify-between gap-6">
+            <span style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.18em', textTransform: 'uppercase', color: active ? 'rgba(245,245,247,0.6)' : 'rgba(245,245,247,0.2)' }}>
+              {label}
+            </span>
+            <span className="w-1 h-1 rounded-full" style={{ background: active ? 'rgba(245,245,247,0.5)' : 'rgba(245,245,247,0.1)', flexShrink: 0 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Controls hint ────────────────────────────────────────────────────────────
+
 function ControlsHint() {
   return (
-    <div
-      className="
-        absolute bottom-6 left-1/2 -translate-x-1/2
-        pointer-events-none
-        font-mono text-[9px] tracking-[0.24em] uppercase text-white/22
-        px-5 py-2.5 rounded-sm border border-white/8
-      "
-      style={{ background: 'rgba(11,12,16,0.52)', backdropFilter: 'blur(16px)' }}
-    >
-      Drag to orbit · Scroll to zoom · Right-drag to pan
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+      <p style={{ fontFamily: 'var(--font-inter)', fontSize: '8px', letterSpacing: '0.25em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.2)', whiteSpace: 'nowrap' }}>
+        <span className="hidden sm:inline">Drag to orbit · Scroll to zoom · Right-drag to pan</span>
+        <span className="sm:hidden">Drag · Pinch · Pan</span>
+      </p>
     </div>
   );
 }
@@ -198,14 +189,19 @@ export default function ExplorePage() {
   const cityData = loadCityData();
 
   return (
-    <main className="relative w-full h-screen overflow-hidden bg-[#030308]">
+    <main className="relative w-full h-screen overflow-hidden" style={{ background: '#09090b' }}>
 
-      {/* Full-viewport 3-D canvas — client component handles Three.js */}
+      {/* Three.js canvas */}
       <div className="absolute inset-0">
         <CityView data={cityData} />
       </div>
 
-      {/* UI overlay — rendered by the server, no client JS needed */}
+      {/* Edge vignette */}
+      <div className="absolute inset-0 pointer-events-none z-10"
+        style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(9,9,11,0.65) 100%)' }}
+      />
+
+      {/* UI */}
       <TopNav cityName={cityData.cityName} />
       <HudStats
         centre={cityData.centre}
@@ -216,6 +212,7 @@ export default function ExplorePage() {
         blockCount={cityData.blocks ? cityData.blocks.length : 0}
         lotCount={cityData.blocks ? cityData.blocks.reduce((s, b) => s + b.lots.length, 0) : 0}
       />
+      <LayerSelector />
       <ControlsHint />
 
     </main>

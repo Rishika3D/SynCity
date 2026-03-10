@@ -1,39 +1,62 @@
 import type { Metadata } from 'next';
-import { Playfair_Display, Space_Grotesk, Space_Mono } from 'next/font/google';
+import { Bebas_Neue, Cormorant_Garamond, Playfair_Display, Cinzel, Inter } from 'next/font/google';
 import './globals.css';
+
+/**
+ * Bebas Neue — hero display font.
+ * Ultra-bold condensed, zero-gap, maximum impact.
+ */
+const bebas = Bebas_Neue({
+  subsets: ['latin'],
+  weight: ['400'],
+  variable: '--font-bebas',
+  display: 'swap',
+});
+
+/**
+ * Cormorant Garamond — kept for analytics / editorial sections.
+ */
+const cormorant = Cormorant_Garamond({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-cormorant',
+  display: 'swap',
+});
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
-  weight: ['400', '600', '700'],
+  weight: ['400', '500', '600', '700', '800'],
+  style: ['normal', 'italic'],
   variable: '--font-playfair',
   display: 'swap',
 });
 
-const spaceGrotesk = Space_Grotesk({
+const cinzel = Cinzel({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
-  variable: '--font-space-grotesk',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-cinzel',
   display: 'swap',
 });
 
-const spaceMono = Space_Mono({
+const inter = Inter({
   subsets: ['latin'],
-  weight: ['400', '700'],
-  variable: '--font-space-mono',
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-inter',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
   title: 'SYNCITY — Urban Intelligence Platform',
   description:
-    'A real-time digital twin interface for smart cities. Visualise traffic, energy, and urban infrastructure in immersive 3D.',
+    'A digital twin platform that monitors, predicts, and understands urban systems. Renaissance intelligence meets modern AI.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${playfair.variable} ${spaceGrotesk.variable} ${spaceMono.variable}`}
+      className={`${bebas.variable} ${cormorant.variable} ${playfair.variable} ${cinzel.variable} ${inter.variable}`}
     >
       <body>{children}</body>
     </html>

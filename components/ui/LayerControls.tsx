@@ -33,6 +33,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'parks',     label: 'Parks',     icon: '◉' },
   { key: 'traffic',   label: 'Traffic',   icon: '●' },
   { key: 'districts', label: 'Districts', icon: '⬡' },
+  { key: 'googleMap', label: 'Google Map', icon: '◍' },
 ];
 
 // ─── Weather config ───────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ function TimeIndicator() {
       {/* Time display */}
       <div className="flex items-center justify-between">
         <span className="font-mono text-[8px] tracking-[0.2em] text-white/25">LOCAL TIME</span>
-        <span className="font-mono text-[9px] tracking-[0.15em] text-white/50">
+        <span className="font-mono text-[9px] tracking-[0.15em] text-white/50" suppressHydrationWarning>
           {pad(h)}:{pad(m)}
         </span>
       </div>
