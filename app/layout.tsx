@@ -58,6 +58,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${bebas.variable} ${cormorant.variable} ${playfair.variable} ${cinzel.variable} ${inter.variable}`}
     >
+      <head>
+        {/* Pre-establish connections to Google Maps servers so the first
+            request doesn't wait for DNS + TCP + TLS handshakes */}
+        <link rel="preconnect" href="https://maps.googleapis.com" />
+        <link rel="preconnect" href="https://maps.gstatic.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://maps.googleapis.com" />
+        <link rel="dns-prefetch" href="https://maps.gstatic.com" />
+        <link rel="dns-prefetch" href="https://tile.googleapis.com" />
+      </head>
       <body>{children}</body>
     </html>
   );

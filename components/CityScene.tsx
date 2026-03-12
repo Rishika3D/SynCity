@@ -48,7 +48,6 @@ export interface LayerVisibility {
   weather:     boolean;  // reserved — kept for API compat
   districts:   boolean;
   streetProps: boolean;
-  googleMap:   boolean;
 }
 
 export const DEFAULT_LAYERS: LayerVisibility = {
@@ -61,7 +60,6 @@ export const DEFAULT_LAYERS: LayerVisibility = {
   weather:     false,
   districts:   false,
   streetProps: true,
-  googleMap:   false,
 };
 
 // ─── Sky colours (lerped by dayFactor) ────────────────────────────────────────

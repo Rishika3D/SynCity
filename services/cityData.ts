@@ -19,20 +19,26 @@ const LNG = 77.5946;
 // ─── Exported interfaces ──────────────────────────────────────────────────────
 
 export interface LiveWeatherData {
-  temperatureC:    number;
-  feelsLikeC:      number;
-  humidity:        number;
-  windSpeedKph:    number;
-  windDirection:   string;
-  uvIndex:         number;
-  precipitationMm: number;
-  condition:       string;
-  weatherCode:     number;
-  aqi:             number;
-  aqiCategory:     'Good' | 'Moderate' | 'Unhealthy' | 'Hazardous';
-  pm25:            number;
-  pm10:            number;
-  no2:             number;
+  temperatureC:        number;
+  feelsLikeC:          number;
+  humidity:            number;
+  windSpeedKph:        number;
+  windDirection:       string;
+  uvIndex:             number;
+  precipitationMm:     number;
+  condition:           string;
+  weatherCode:         number;
+  aqi:                 number;
+  aqiCategory:         'Good' | 'Moderate' | 'Unhealthy' | 'Hazardous';
+  pm25:                number;
+  pm10:                number;
+  no2:                 number;
+  // Google Air Quality enrichment (optional — absent if API unavailable)
+  uaqi?:               number;
+  o3?:                 number | null;
+  dominantPollutant?:  string;
+  healthRecommendation?: string;
+  aqiColor?:           string;
 }
 
 export interface LiveTrafficData {
@@ -293,11 +299,32 @@ export async function generateTimeSeries(): Promise<TimeSeriesPoint[]> {
 // ─── Composite: fetch everything in parallel ──────────────────────────────────
 
 export async function fetchAllCityData(): Promise<LiveCityData> {
-  const [weather, traffic, timeSeries] = await Promise.all([
+  const [weatherBase, traffic, timeSeries] = await Promise.all([
     fetchWeatherAndAqi(),
     fetchTrafficData(),
     generateTimeSeries(),
   ]);
+
+  // Overlay Google Air Quality API data (richer: UAQI, O₃, dominant pollutant,
+  // health recommendation) — silently falls back if key is absent or call fails.
+  let weather: LiveWeatherData = weatherBase;
+  try {
+    const { fetchGoogleAirQuality } = await import('./googleApis');
+    const g = await fetchGoogleAirQuality(LAT, LNG);
+    weather = {
+      ...weatherBase,
+      uaqi:                g.uaqi,
+      aqi:                 g.uaqi,                       // prefer Google UAQI
+      aqiCategory:         aqiCategory(g.uaqi),
+      pm25:                g.pm25  ?? weatherBase.pm25,
+      pm10:                g.pm10  ?? weatherBase.pm10,
+      no2:                 g.no2   ?? weatherBase.no2,
+      o3:                  g.o3,
+      dominantPollutant:   g.dominantPollutant,
+      healthRecommendation: g.recommendation,
+      aqiColor:            g.color,
+    };
+  } catch { /* fall through — use Open-Meteo AQI data */ }
 
   return {
     weather,

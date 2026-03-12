@@ -33,7 +33,6 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'parks',     label: 'Parks',     icon: '◉' },
   { key: 'traffic',   label: 'Traffic',   icon: '●' },
   { key: 'districts', label: 'Districts', icon: '⬡' },
-  { key: 'googleMap', label: 'Google Map', icon: '◍' },
 ];
 
 // ─── Weather config ───────────────────────────────────────────────────────────

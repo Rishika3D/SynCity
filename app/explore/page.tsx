@@ -90,86 +90,6 @@ function TopNav({ cityName }: { cityName: string }) {
   );
 }
 
-// ─── HUD stats ────────────────────────────────────────────────────────────────
-
-function HudStats({
-  centre, roadCount, waterCount, parkCount, districtCount, blockCount, lotCount,
-}: {
-  centre: [number, number]; roadCount: number; waterCount: number; parkCount: number;
-  districtCount: number; blockCount: number; lotCount: number;
-}) {
-  const F = 'var(--font-inter)';
-  const stats = [
-    { label: 'Districts', val: districtCount },
-    { label: 'Blocks',    val: blockCount.toLocaleString() },
-    { label: 'Lots',      val: lotCount.toLocaleString()   },
-    { label: 'Roads',     val: roadCount.toLocaleString()  },
-    { label: 'Water',     val: waterCount.toLocaleString() },
-    { label: 'Parks',     val: parkCount.toLocaleString()  },
-  ];
-
-  return (
-    <div className="hidden sm:block absolute top-16 left-4 sm:left-6 z-20 pointer-events-none" style={{ minWidth: 160 }}>
-      {/* Coordinates */}
-      <p style={{ fontFamily: F, fontSize: '10px', color: 'rgba(245,245,247,0.55)', letterSpacing: '0.05em', marginBottom: '2px', fontVariantNumeric: 'tabular-nums' }}>
-        {centre[1].toFixed(3)}°N {centre[0].toFixed(3)}°E
-      </p>
-      <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0' }} />
-
-      {/* Stats */}
-      <div className="flex flex-col gap-1">
-        {stats.map(({ label, val }) => (
-          <div key={label} className="flex items-center justify-between gap-8">
-            <span style={{ fontFamily: F, fontSize: '8px', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.25)' }}>
-              {label}
-            </span>
-            <span style={{ fontFamily: F, fontSize: '10px', color: 'rgba(245,245,247,0.5)', fontVariantNumeric: 'tabular-nums' }}>
-              {val}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0' }} />
-      <p style={{ fontFamily: F, fontSize: '7px', letterSpacing: '0.2em', color: 'rgba(245,245,247,0.15)', textTransform: 'uppercase' }}>
-        {DATA_SOURCE === 'real' ? 'OSM Live' : 'Mock Data'}
-      </p>
-    </div>
-  );
-}
-
-// ─── Layer selector ───────────────────────────────────────────────────────────
-
-function LayerSelector() {
-  const F = 'var(--font-inter)';
-  const layers = [
-    { label: 'Roads',       active: true  },
-    { label: 'Districts',   active: true  },
-    { label: 'Traffic',     active: false },
-    { label: 'Air Quality', active: false },
-    { label: 'Energy',      active: false },
-    { label: 'Weather',     active: false },
-  ];
-
-  return (
-    <div className="hidden sm:block absolute top-16 right-4 sm:right-6 z-20 pointer-events-none" style={{ minWidth: 130 }}>
-      <p style={{ fontFamily: F, fontSize: '8px', letterSpacing: '0.5em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.25)', marginBottom: '8px' }}>
-        Layers
-      </p>
-      <div className="flex flex-col gap-2">
-        {layers.map(({ label, active }) => (
-          <div key={label} className="flex items-center justify-between gap-6">
-            <span style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.18em', textTransform: 'uppercase', color: active ? 'rgba(245,245,247,0.6)' : 'rgba(245,245,247,0.2)' }}>
-              {label}
-            </span>
-            <span className="w-1 h-1 rounded-full" style={{ background: active ? 'rgba(245,245,247,0.5)' : 'rgba(245,245,247,0.1)', flexShrink: 0 }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Controls hint ────────────────────────────────────────────────────────────
 
 function ControlsHint() {
@@ -203,16 +123,6 @@ export default function ExplorePage() {
 
       {/* UI */}
       <TopNav cityName={cityData.cityName} />
-      <HudStats
-        centre={cityData.centre}
-        roadCount={cityData.roads.length}
-        waterCount={cityData.water.length}
-        parkCount={cityData.parks.length}
-        districtCount={cityData.districts ? cityData.districts.length : 0}
-        blockCount={cityData.blocks ? cityData.blocks.length : 0}
-        lotCount={cityData.blocks ? cityData.blocks.reduce((s, b) => s + b.lots.length, 0) : 0}
-      />
-      <LayerSelector />
       <ControlsHint />
 
     </main>

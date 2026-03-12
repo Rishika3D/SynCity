@@ -269,6 +269,60 @@ function Skeleton({ h }: { h: number }) {
   return <div className="animate-pulse" style={{ height: h, background: 'rgba(255,255,255,0.04)', borderTop: `1px solid ${O.line}` }} />;
 }
 
+// ─── Air Quality detail panel ─────────────────────────────────────────────────
+
+function AirQualityPanel({ weather }: { weather: import('@/services/cityData').LiveWeatherData }) {
+  if (!weather.healthRecommendation && !weather.dominantPollutant) return null;
+
+  const pollutants: { label: string; value: number | null; unit: string }[] = [
+    { label: 'PM₂.₅', value: weather.pm25,   unit: 'µg/m³' },
+    { label: 'PM₁₀',  value: weather.pm10,   unit: 'µg/m³' },
+    { label: 'NO₂',   value: weather.no2,    unit: 'µg/m³' },
+    { label: 'O₃',    value: weather.o3 ?? null, unit: 'µg/m³' },
+  ];
+
+  const dotColor = weather.aqiColor ?? O.amber;
+
+  return (
+    <div style={{ borderTop: `1px solid ${O.lineStrong}`, paddingTop: '20px', paddingBottom: '20px' }}>
+      {/* Header row */}
+      <div className="flex items-center gap-3 mb-5">
+        <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.35em', textTransform: 'uppercase', color: O.text20 }}>
+          Google Air Quality API
+        </p>
+        {weather.dominantPollutant && (
+          <span style={{ fontFamily: 'var(--font-inter)', fontSize: '8px', letterSpacing: '0.2em', textTransform: 'uppercase', color: dotColor, border: `1px solid ${dotColor}`, padding: '2px 7px', opacity: 0.8 }}>
+            {weather.dominantPollutant}
+          </span>
+        )}
+      </div>
+
+      {/* Health recommendation */}
+      {weather.healthRecommendation && (
+        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '13px', fontWeight: 300, color: O.text50, lineHeight: 1.65, maxWidth: '68ch', marginBottom: '20px' }}>
+          {weather.healthRecommendation}
+        </p>
+      )}
+
+      {/* Pollutant mini-grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {pollutants.map(p => p.value !== null && (
+          <div key={p.label} style={{ borderLeft: `1px solid ${O.line}`, paddingLeft: '12px' }}>
+            <p style={{ fontFamily: 'var(--font-inter)', fontSize: '8px', letterSpacing: '0.3em', textTransform: 'uppercase', color: O.text20, marginBottom: '4px' }}>
+              {p.label}
+            </p>
+            <p style={{ fontFamily: 'var(--font-inter)', fontSize: '1.35rem', fontWeight: 600, color: O.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              {typeof p.value === 'number' ? p.value.toFixed(1) : '—'}
+            </p>
+            <p style={{ fontFamily: 'var(--font-inter)', fontSize: '8px', color: O.text20, marginTop: '2px' }}>{p.unit}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function CityAnalytics() {
@@ -306,9 +360,13 @@ export function CityAnalytics() {
     { id: 'traffic', label: 'Traffic Index',     value: String(cityData.traffic.congestionLevel), unit: '/ 100',
       trend: cityData.traffic.trend === 'rising' ? 'up' : cityData.traffic.trend === 'falling' ? 'down' : 'flat',
       trendPct: cityData.traffic.trend === 'rising' ? 6 : -4, subtext: `${cityData.traffic.averageSpeedKph} km/h avg`, icon: <Car /> },
-    { id: 'aqi',     label: 'Air Quality (AQI)', value: String(cityData.weather.aqi), unit: '',
-      trend: cityData.weather.aqi > 120 ? 'up' : 'down', trendPct: cityData.weather.aqi > 120 ? 4 : -3,
-      subtext: cityData.weather.aqiCategory, icon: <Wind /> },
+    { id: 'aqi',     label: 'Air Quality (AQI)', value: String(cityData.weather.uaqi ?? cityData.weather.aqi), unit: '',
+      trend: (cityData.weather.uaqi ?? cityData.weather.aqi) > 120 ? 'up' : 'down',
+      trendPct: (cityData.weather.uaqi ?? cityData.weather.aqi) > 120 ? 4 : -3,
+      subtext: cityData.weather.dominantPollutant
+        ? `${cityData.weather.aqiCategory} · ${cityData.weather.dominantPollutant.toUpperCase()}`
+        : cityData.weather.aqiCategory,
+      icon: <Wind /> },
     { id: 'energy',  label: 'Energy Load',        value: cityData.utility.powerConsumptionMW.toLocaleString('en-IN'), unit: 'MW',
       trend: cityData.utility.powerTrend === 'rising' ? 'up' : 'down', trendPct: 8,
       subtext: `${cityData.utility.gridLoadPct}% grid`, icon: <Zap /> },
@@ -392,6 +450,13 @@ export function CityAnalytics() {
             </div>
           )}
         </section>
+
+        {/* ── I-b. Air Quality Detail ──────────────────────────────────── */}
+        {cityData && (
+          <section>
+            <AirQualityPanel weather={cityData.weather} />
+          </section>
+        )}
 
         {/* ── II. Forecasts ────────────────────────────────────────────── */}
         <section>
