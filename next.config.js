@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['three', 'maplibre-gl'],
+  transpilePackages: ['three', 'mapbox-gl'],
 };
 
 module.exports = nextConfig;
