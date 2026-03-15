@@ -69,3 +69,62 @@ canvas { display: block; outline: none; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+/* ─── MapLibre GL — dark theme overrides ─────────────────────────────── */
+
+/* Popup shell */
+.syncity-popup .maplibregl-popup-content {
+  background:         rgba(9, 9, 11, 0.94);
+  backdrop-filter:    blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border:             1px solid rgba(0, 238, 255, 0.18);
+  border-radius:      10px;
+  padding:            14px 16px;
+  box-shadow:         0 0 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0,238,255,0.06);
+  color:              #f0f0f2;
+}
+
+/* Popup tip (arrow) */
+.syncity-popup .maplibregl-popup-tip {
+  border-top-color:   rgba(9, 9, 11, 0.94) !important;
+  border-bottom-color:rgba(9, 9, 11, 0.94) !important;
+}
+
+/* Close button */
+.syncity-popup .maplibregl-popup-close-button {
+  color:       rgba(255, 255, 255, 0.3);
+  font-size:   16px;
+  top:         6px;
+  right:       8px;
+  transition:  color 0.15s;
+}
+.syncity-popup .maplibregl-popup-close-button:hover {
+  color:       #00EEFF;
+  background:  transparent;
+}
+
+/* Attribution chip */
+.maplibregl-ctrl-attrib {
+  background: rgba(9, 9, 11, 0.72) !important;
+  color:      rgba(255, 255, 255, 0.25) !important;
+  font-size:  9px !important;
+  border-radius: 6px !important;
+}
+.maplibregl-ctrl-attrib a { color: rgba(0, 238, 255, 0.45) !important; }
+
+/* Navigation controls */
+.maplibregl-ctrl-group {
+  background: rgba(9, 9, 11, 0.88) !important;
+  border:     1px solid rgba(0, 238, 255, 0.12) !important;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5) !important;
+  border-radius: 10px !important;
+}
+.maplibregl-ctrl-group button {
+  background-color: transparent !important;
+  border-color:     rgba(255,255,255,0.06) !important;
+}
+.maplibregl-ctrl-group button:hover {
+  background-color: rgba(0,238,255,0.08) !important;
+}
+.maplibregl-ctrl-icon { filter: invert(1) !important; opacity: 0.55; }
+.maplibregl-ctrl-icon:hover { opacity: 0.9; }

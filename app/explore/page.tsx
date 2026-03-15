@@ -1,130 +1,143 @@
+// File: app/explore/page.tsx
+'use client';
+
 /**
- * app/explore/page.tsx — Obsidian Apple UI
+ * SynCity — Explore City Page
+ * Fullscreen 3D digital-twin map for Bangalore, India.
  *
- * Server Component. Loads city data, renders Three.js CityView + floating UI.
- * No glass panels, no colored borders. Pure floating typography on obsidian.
+ * Stack:  MapLibre GL JS · Open-Meteo · TypeScript · Tailwind CSS
+ * Layout:
+ *   z:0  ── Fullscreen MapLibre 3D map
+ *   z:20 ── Floating header, layer panel, stats/weather panel, status bar
  */
 
-import fs   from 'fs';
-import path from 'path';
-import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import { useState } from 'react';
+import LayersControl from '@/components/map/LayersControl';
+import CityStatsPanel from '@/components/ui/CityStatsPanel';
+import WeatherCard from '@/components/ui/WeatherCard';
+import type { LayerId, LayerState } from '@/types/map';
 
-import { CityView }              from './CityView';
-import { mockBangalore }         from '@/data/mockBangalore';
-import { generateDistricts }     from '@/utils/districtGenerator';
-import { generateBlocks }        from '@/utils/blockSubdivision';
-import type { CityData, RoadWay } from '@/types/osm';
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const DATA_SOURCE: 'real' | 'mock' = 'real';
-
-const RENDER_ROAD_TYPES = new Set([
-  'motorway', 'motorway_link',
-  'trunk',    'trunk_link',
-  'primary',  'primary_link',
-  'secondary',
-  'tertiary',
-]);
-
-const MAX_ROADS = 1_200;
-
-// ─── Data loading ─────────────────────────────────────────────────────────────
-
-function loadCityData(): CityData {
-  if (DATA_SOURCE === 'mock') return mockBangalore as unknown as CityData;
-
-  const jsonPath = path.join(process.cwd(), 'data', 'realBangalore.json');
-  if (!fs.existsSync(jsonPath)) {
-    console.warn('[explore] realBangalore.json not found — falling back to mock data.');
-    return mockBangalore as unknown as CityData;
-  }
-
-  const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as CityData;
-  const filteredRoads: RoadWay[] = (raw.roads as RoadWay[])
-    .filter(r => RENDER_ROAD_TYPES.has(r.roadType))
-    .slice(0, MAX_ROADS);
-
-  const cityData: CityData = { ...raw, roads: filteredRoads, buildings: [] };
-
-  const t0 = performance.now();
-  cityData.districts = generateDistricts({
-    roads: cityData.roads, water: cityData.water, parks: cityData.parks,
-    centre: cityData.centre, metresToUnit: cityData.metresToUnit, bbox: cityData.bbox,
-  });
-  console.log(`[explore] Generated ${cityData.districts.length} districts in ${(performance.now() - t0).toFixed(1)}ms`);
-
-  const t1 = performance.now();
-  cityData.blocks = generateBlocks({
-    roads: cityData.roads, districts: cityData.districts,
-    centre: cityData.centre, metresToUnit: cityData.metresToUnit,
-  });
-  const totalLots = cityData.blocks.reduce((s, b) => s + b.lots.length, 0);
-  console.log(`[explore] Generated ${cityData.blocks.length} blocks (${totalLots} lots) in ${(performance.now() - t1).toFixed(1)}ms`);
-
-  return cityData;
-}
-
-// ─── Top navigation ───────────────────────────────────────────────────────────
-
-function TopNav({ cityName }: { cityName: string }) {
-  const F = 'var(--font-inter)';
-  return (
-    <nav className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 sm:px-10 py-4 pointer-events-none">
-      <Link
-        href="/"
-        className="pointer-events-auto flex items-center gap-2 transition-colors duration-300 hover:text-white/70"
-        style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.35em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.35)' }}
-      >
-        ← Syncity
-      </Link>
-
-      <span style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.55em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.35)' }}>
-        Explore
-      </span>
-
-      <span style={{ fontFamily: F, fontSize: '9px', letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.2)' }}>
-        {cityName}
-      </span>
-    </nav>
-  );
-}
-
-// ─── Controls hint ────────────────────────────────────────────────────────────
-
-function ControlsHint() {
-  return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-      <p style={{ fontFamily: 'var(--font-inter)', fontSize: '8px', letterSpacing: '0.25em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.2)', whiteSpace: 'nowrap' }}>
-        <span className="hidden sm:inline">Drag to orbit · Scroll to zoom · Right-drag to pan</span>
-        <span className="sm:hidden">Drag · Pinch · Pan</span>
+// ── Dynamic import — MapLibre GL JS is browser-only ──────────────────────────
+const CityMap = dynamic(() => import('@/components/map/CityMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-[#09090b]">
+      <div className="relative mb-6 w-16 h-16">
+        <div className="absolute inset-0 rounded-full border border-[#00EEFF]/20 animate-ping" />
+        <div className="w-16 h-16 rounded-full border-2 border-[#00EEFF]/60 border-t-transparent animate-spin" />
+      </div>
+      <p className="font-mono text-[#00EEFF]/70 text-[11px] tracking-[0.35em] uppercase">
+        Initialising City Grid
+      </p>
+      <p className="font-mono text-white/20 text-[10px] tracking-widest mt-2">
+        12.9716°N · 77.5946°E · Bangalore
       </p>
     </div>
-  );
-}
+  ),
+});
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ── Initial layer visibility ──────────────────────────────────────────────────
+const INITIAL_LAYERS: LayerState = {
+  temperature: false,
+  pollution:   false,
+  sensors:     true,
+  traffic:     true,
+};
 
+// ── Page component ────────────────────────────────────────────────────────────
 export default function ExplorePage() {
-  const cityData = loadCityData();
+  const [activeLayers, setActiveLayers] = useState<LayerState>(INITIAL_LAYERS);
+
+  const handleToggle = (id: LayerId) =>
+    setActiveLayers(prev => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <main className="relative w-full h-screen overflow-hidden" style={{ background: '#09090b' }}>
+    <div className="relative w-screen h-screen overflow-hidden bg-[#09090b]">
 
-      {/* Three.js canvas */}
-      <div className="absolute inset-0">
-        <CityView data={cityData} />
+      {/* ── Fullscreen map ─────────────────────────────────────────── */}
+      <div className="absolute inset-0 z-0">
+        <CityMap activeLayers={activeLayers} />
       </div>
 
-      {/* Edge vignette */}
-      <div className="absolute inset-0 pointer-events-none z-10"
-        style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(9,9,11,0.65) 100%)' }}
-      />
+      {/* ── Top gradient vignette + header ─────────────────────────── */}
+      <header
+        className="absolute top-0 inset-x-0 z-20 pointer-events-none
+                   flex items-center justify-between px-6 pt-4 pb-16"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(9,9,11,0.90) 0%, transparent 100%)',
+        }}
+      >
+        {/* Brand */}
+        <div className="flex items-center gap-3 pointer-events-auto">
+          <div
+            className="w-8 h-8 flex items-center justify-center rounded-sm flex-shrink-0"
+            style={{ border: '1px solid rgba(0,238,255,0.30)' }}
+          >
+            <div
+              className="w-3 h-3 rotate-45"
+              style={{ border: '1.5px solid rgba(0,238,255,0.65)' }}
+            />
+          </div>
+          <div>
+            <h1 className="font-serif text-base tracking-[0.22em] text-white/90 uppercase leading-none">
+              SynCity
+            </h1>
+            <p className="font-mono text-[9px] tracking-[0.28em] text-[#00EEFF]/45 uppercase mt-0.5">
+              Urban Intelligence Platform
+            </p>
+          </div>
+        </div>
 
-      {/* UI */}
-      <TopNav cityName={cityData.cityName} />
-      <ControlsHint />
+        {/* Right meta */}
+        <div className="flex items-center gap-5 pointer-events-auto">
+          <span className="hidden sm:block font-mono text-[11px] text-white/25 tracking-wider">
+            {new Date().toLocaleDateString('en-IN', {
+              weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+            })}
+          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full bg-[#00EEFF] animate-pulse"
+              style={{ boxShadow: '0 0 7px #00EEFF' }}
+            />
+            <span className="font-mono text-[11px] text-[#00EEFF]/80 tracking-wider uppercase">
+              Live
+            </span>
+          </div>
+        </div>
+      </header>
 
-    </main>
+      {/* ── Left — Layer controls ───────────────────────────────────── */}
+      <aside className="absolute left-4 top-1/2 -translate-y-1/2 z-20">
+        <LayersControl activeLayers={activeLayers} onToggle={handleToggle} />
+      </aside>
+
+      {/* ── Right — Weather card + City stats ──────────────────────── */}
+      <aside
+        className="absolute right-4 z-20 flex flex-col gap-3"
+        style={{ top: '72px', bottom: '36px', width: '272px' }}
+      >
+        <WeatherCard />
+        <CityStatsPanel />
+      </aside>
+
+      {/* ── Bottom gradient + status bar ───────────────────────────── */}
+      <footer
+        className="absolute bottom-0 inset-x-0 z-20 pointer-events-none
+                   flex items-center justify-between px-5 py-2.5"
+        style={{
+          background: 'linear-gradient(to top, rgba(9,9,11,0.80) 0%, transparent 100%)',
+        }}
+      >
+        <span className="font-mono text-[10px] text-white/25 tracking-widest">
+          12.9716°N · 77.5946°E · Bangalore, India
+        </span>
+        <span className="font-mono text-[10px] text-white/18 tracking-wider">
+          © MapLibre GL JS · © CARTO · © OpenMapTiles
+        </span>
+      </footer>
+
+    </div>
   );
 }
