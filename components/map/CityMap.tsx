@@ -16,17 +16,18 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import type { LayerState, LayerId, SensorLocation } from '@/types/map';
-import type { ExpressionSpecification, LayerSpecification } from 'maplibre-gl';
+import type { ExpressionSpecification, LayerSpecification } from 'mapbox-gl';
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const BANGALORE: [number, number] = [77.5946, 12.9716];
 
-const MAP_STYLE =
-  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
 
 // ── Sensor data ───────────────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ function pollutionData(): GeoJSON.FeatureCollection {
 
 // ── Helper — first symbol layer id ───────────────────────────────────────────
 
-function firstSymbolLayer(map: maplibregl.Map): string | undefined {
+function firstSymbolLayer(map: mapboxgl.Map): string | undefined {
   for (const layer of map.getStyle().layers ?? []) {
     if (layer.type === 'symbol') return layer.id;
   }
@@ -185,15 +186,15 @@ interface CityMapProps {
 
 export default function CityMap({ activeLayers }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<maplibregl.Map | null>(null);
-  const popupRef     = useRef<maplibregl.Popup | null>(null);
+  const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const popupRef     = useRef<mapboxgl.Popup | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   // ── Initialise map (once) ──────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const map = new maplibregl.Map({
+    const map = new mapboxgl.Map({
       container:    containerRef.current,
       style:        MAP_STYLE,
       center:       BANGALORE,
@@ -206,11 +207,11 @@ export default function CityMap({ activeLayers }: CityMapProps) {
 
     // Controls
     map.addControl(
-      new maplibregl.AttributionControl({ compact: true }),
+      new mapboxgl.AttributionControl({ compact: true }),
       'bottom-left',
     );
     map.addControl(
-      new maplibregl.NavigationControl({ visualizePitch: true }),
+      new mapboxgl.NavigationControl({ visualizePitch: true }),
       'bottom-right',
     );
 
@@ -224,35 +225,37 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         const heightExpr: ExpressionSpecification = [
           'interpolate', ['linear'], ['zoom'],
           13,   0,
-          13.5, ['coalesce', ['get', 'render_height'], 12],
+          13.5, ['coalesce', ['get', 'height'], 12],
         ];
         const baseExpr: ExpressionSpecification = [
           'interpolate', ['linear'], ['zoom'],
           13,   0,
-          13.5, ['coalesce', ['get', 'render_min_height'], 0],
+          13.5, ['coalesce', ['get', 'min_height'], 0],
         ];
+        // Pastel yellow gradient — short buildings are softer, tall ones richer
         const colourExpr: ExpressionSpecification = [
           'interpolate', ['linear'],
-          ['coalesce', ['get', 'render_height'], 0],
-          0,   '#0d1117',
-          30,  '#121922',
-          80,  '#172038',
-          200, '#1c2a50',
+          ['coalesce', ['get', 'height'], 0],
+          0,   '#fdf3c0',   // very soft cream-yellow
+          20,  '#f9e87a',   // light pastel yellow
+          60,  '#f5d84a',   // mid pastel yellow
+          150, '#e8c62a',   // warm golden yellow for towers
         ];
 
         const buildingLayer: LayerSpecification = {
-          id:           '3d-buildings',
-          source:       'carto',
+          id:             '3d-buildings',
+          source:         'composite',
           'source-layer': 'building',
-          type:         'fill-extrusion',
-          minzoom:      13,
+          filter:         ['==', 'extrude', 'true'],
+          type:           'fill-extrusion',
+          minzoom:        13,
           paint: {
             'fill-extrusion-color':   colourExpr,
             'fill-extrusion-height':  heightExpr,
             'fill-extrusion-base':    baseExpr,
             'fill-extrusion-opacity': [
               'interpolate', ['linear'], ['zoom'],
-              13, 0, 14, 0.88,
+              13, 0, 14, 0.90,
             ] as ExpressionSpecification,
           },
         };
@@ -382,7 +385,7 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         const props = e.features[0].properties as Record<string, unknown>;
         const coord = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
         popupRef.current?.remove();
-        popupRef.current = new maplibregl.Popup({
+        popupRef.current = new mapboxgl.Popup({
           offset:      12,
           closeButton: true,
           maxWidth:    '240px',

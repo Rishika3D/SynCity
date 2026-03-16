@@ -134,7 +134,7 @@ export default function ExplorePage() {
           12.9716°N · 77.5946°E · Bangalore, India
         </span>
         <span className="font-mono text-[10px] text-white/18 tracking-wider">
-          © MapLibre GL JS · © CARTO · © OpenMapTiles
+          © Mapbox · © OpenStreetMap
         </span>
       </footer>
 
