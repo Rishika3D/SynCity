@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* MapLibre GL base styles */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
 /* ─── Obsidian Design Tokens ─────────────────────────────────────────── */
 :root {
   /* Backgrounds */
