@@ -37,8 +37,8 @@ html, body {
   padding: 0;
   width: 100%;
   min-height: 100%;
-  overflow-x: hidden;
-  background-color: var(--obsidian);
+  overflow-x: clip;   /* clip ≠ hidden — doesn't break position:sticky */
+  background-color: #060B18;   /* deep navy — matches cloud scene start */
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

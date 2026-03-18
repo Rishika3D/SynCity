@@ -1,227 +1,521 @@
-import dynamic from 'next/dynamic';
-import Link from 'next/link';
+'use client';
 
-// Three.js canvas — client only (no SSR)
+/**
+ * SynCity — Cinematic scroll-driven landing page.
+ *
+ * Layout
+ * ──────
+ * fixed  → HeroCanvas  (R3F clouds, camera drifts forward on scroll)
+ * fixed  → TextOverlay (SYNCITY headline, fades in / fades out mid-scroll)
+ * scroll → #hero-scroll   250vh — drives camera through clouds
+ *          #city-facts         — Bangalore data strip
+ *          #modules            — Platform module cards
+ */
+
+import dynamic   from 'next/dynamic';
+import Link      from 'next/link';
+import { useEffect, useRef } from 'react';
+import gsap      from 'gsap';
+import { ScrollTrigger }    from 'gsap/ScrollTrigger';
+
 const HeroCanvas = dynamic(
   () => import('@/components/hero/HeroCanvas'),
-  { ssr: false },
+  {
+    ssr    : false,
+    loading: () => (
+      <div style={{
+        position      : 'fixed',
+        inset         : 0,
+        background    : '#080e1c',
+        display       : 'flex',
+        alignItems    : 'center',
+        justifyContent: 'center',
+      }}>
+        <span style={{
+          fontFamily   : '"Inter", system-ui, sans-serif',
+          fontSize     : '9px',
+          letterSpacing: '0.55em',
+          color        : 'rgba(120,160,255,0.30)',
+          textTransform: 'uppercase',
+        }}>
+          Loading
+        </span>
+      </div>
+    ),
+  },
 );
 
-// ─── Feature data ─────────────────────────────────────────────────────────────
+// ── Bangalore city facts ──────────────────────────────────────────────────────
+const FACTS = [
+  { value: '13.6M',  label: 'Population',     sub: 'Metro area 2024' },
+  { value: '741',    label: 'Area km²',        sub: 'BBMP jurisdiction' },
+  { value: '920m',   label: 'Elevation',       sub: 'Above sea level' },
+  { value: '$110B',  label: 'City GDP',        sub: '40% of India IT exports' },
+  { value: '12,847', label: 'IoT Sensors',     sub: 'Active city nodes' },
+  { value: '210+',   label: 'Lakes',           sub: 'Natural water bodies' },
+  { value: '1,537',  label: 'Founded',         sub: 'By Kempe Gowda I' },
+  { value: '24°C',   label: 'Avg Temperature', sub: 'Year-round climate' },
+];
 
-const FEATURES = [
+// ── Module cards ──────────────────────────────────────────────────────────────
+const MODULES = [
   {
-    num:    '01',
-    title:  'Urban Intelligence',
-    body:   "A living map of the city's neural systems — roads, power grids, water networks, and human movement — rendered as a navigable digital twin.",
-    detail: '4,200 IoT nodes · Real-time road network · 48-hour prediction horizon',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="14" stroke="rgba(245,245,247,0.2)" strokeWidth="0.8"/>
-        <circle cx="16" cy="16" r="8"  stroke="rgba(245,245,247,0.1)" strokeWidth="0.6" strokeDasharray="2 3"/>
-        <circle cx="16" cy="16" r="2.5" fill="rgba(245,245,247,0.3)"/>
-        <line x1="16" y1="2"  x2="16" y2="6"  stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-        <line x1="16" y1="26" x2="16" y2="30" stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-        <line x1="2"  y1="16" x2="6"  y2="16" stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-        <line x1="26" y1="16" x2="30" y2="16" stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-      </svg>
-    ),
+    href  : '/explore',
+    tag   : '01 — Explore',
+    title : 'City Twin',
+    desc  : 'Navigate a real-time 3D digital replica of Bangalore. Visualise live traffic flow, air quality sensors, weather overlays, and infrastructure health — all layered on an interactive city grid.',
+    stats : [
+      { v: '6,700+', l: 'BMTC buses tracked' },
+      { v: '1,300',  l: 'Traffic signals' },
+      { v: 'Live',   l: 'Open-Meteo weather' },
+    ],
+    accent: '#4A90D9',
   },
   {
-    num:    '02',
-    title:  'AI Predictions',
-    body:   'Machine learning models trained on five years of city data forecast traffic surges, air quality shifts, and energy demand spikes twelve hours before they occur.',
-    detail: 'Traffic · Air Quality · Energy · Weather',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <polyline points="2,26 8,18 14,22 20,10 26,15 30,6" stroke="rgba(245,245,247,0.25)" strokeWidth="1.2" fill="none"/>
-        <polyline points="20,10 26,6 30,2" stroke="rgba(245,245,247,0.1)" strokeWidth="1" strokeDasharray="2 2" fill="none"/>
-        <circle cx="8"  cy="18" r="1.5" fill="rgba(245,245,247,0.3)"/>
-        <circle cx="14" cy="22" r="1.5" fill="rgba(245,245,247,0.3)"/>
-        <circle cx="20" cy="10" r="1.5" fill="rgba(245,245,247,0.3)"/>
-        <line x1="2" y1="28" x2="30" y2="28" stroke="rgba(245,245,247,0.1)" strokeWidth="0.6"/>
-        <line x1="2" y1="4"  x2="2"  y2="28" stroke="rgba(245,245,247,0.1)" strokeWidth="0.6"/>
-      </svg>
-    ),
+    href  : '/analytics',
+    tag   : '02 — Analytics',
+    title : 'City Intelligence',
+    desc  : 'City-wide data aggregation and trend analysis. Monitor pollution, energy consumption, mobility patterns, and population density. Predictive models surface infrastructure issues before they occur.',
+    stats : [
+      { v: '98.2%', l: 'Sensor uptime' },
+      { v: '47ms',  l: 'Avg data latency' },
+      { v: '3.2TB', l: 'Daily ingest' },
+    ],
+    accent: '#6A5ACD',
   },
   {
-    num:    '03',
-    title:  'City Simulation',
-    body:   "Add a metro corridor, reroute arterial roads, or impose flood conditions — and watch the city's systems recalibrate in real time, revealing cascades of consequence.",
-    detail: 'Scenario modelling · Infrastructure stress-testing · Population flow',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <rect x="3"  y="16" width="7" height="12" fill="rgba(245,245,247,0.06)" stroke="rgba(245,245,247,0.2)" strokeWidth="0.7"/>
-        <rect x="13" y="10" width="7" height="18" fill="rgba(245,245,247,0.06)" stroke="rgba(245,245,247,0.2)" strokeWidth="0.7"/>
-        <rect x="23" y="4"  width="7" height="24" fill="rgba(245,245,247,0.06)" stroke="rgba(245,245,247,0.2)" strokeWidth="0.7"/>
-        <line x1="2"  y1="28" x2="30" y2="28" stroke="rgba(245,245,247,0.15)" strokeWidth="0.7"/>
-      </svg>
-    ),
-  },
-  {
-    num:    '04',
-    title:  'Infrastructure Monitoring',
-    body:   'Continuous surveillance of every water main, power substation, and road segment. Anomalies are flagged seconds after detection, before they escalate.',
-    detail: 'Power · Water · Roads · Fibre · Emergency Services',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(245,245,247,0.15)" strokeWidth="0.8"/>
-        <path d="M 8 16 Q 12 6 16 16 Q 20 26 24 16" fill="none" stroke="rgba(245,245,247,0.3)" strokeWidth="1.2"/>
-        <circle cx="8"  cy="16" r="1.8" fill="rgba(245,245,247,0.25)"/>
-        <circle cx="24" cy="16" r="1.8" fill="rgba(245,245,247,0.25)"/>
-      </svg>
-    ),
+    href  : '/simulation',
+    tag   : '03 — Simulation',
+    title : 'Scenario Engine',
+    desc  : 'Run what-if scenarios across the digital twin. Model new transit routes, flood events, high-density development, or infrastructure upgrades — and measure city-wide impact before a single brick is laid.',
+    stats : [
+      { v: '2.4×', l: 'Faster than real-time' },
+      { v: '400+', l: 'Model parameters' },
+      { v: '95%',  l: 'Scenario accuracy' },
+    ],
+    accent: '#2ECC8A',
   },
 ];
 
-// ─── Feature card ─────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+function TextOverlay() {
+  const wrapRef = useRef<HTMLDivElement>(null);
 
-function FeatureCard({ f, idx }: { f: typeof FEATURES[0]; idx: number }) {
-  const isEven = idx % 2 === 0;
+  useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
+
+    // Fade out as user scrolls through clouds (after 50% progress)
+    const st = ScrollTrigger.create({
+      trigger : '#hero-scroll',
+      start   : 'top top',
+      end     : 'bottom top',
+      scrub   : 1,
+      onUpdate(self) {
+        if (!wrapRef.current) return;
+        const fade = 1 - Math.max(0, (self.progress - 0.50) / 0.30);
+        wrapRef.current.style.opacity = Math.max(0, fade).toFixed(3);
+      },
+    });
+
+    return () => { st.kill(); };
+  }, []);
+
   return (
-    <div className={`flex flex-col sm:flex-row gap-7 sm:gap-20 items-start ${isEven ? '' : 'sm:flex-row-reverse'}`}>
-      {/* Icon + number */}
-      <div className="shrink-0 flex sm:flex-col items-center sm:items-center gap-4 pt-1">
-        <div className="w-14 h-14 flex items-center justify-center rounded-2xl"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          {f.symbol}
-        </div>
-        <span style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.3em', color: 'rgba(245,245,247,0.2)' }}>
-          {f.num}
-        </span>
+    <div
+      ref={wrapRef}
+      style={{
+        position     : 'fixed',
+        inset        : 0,
+        zIndex       : 10,
+        display      : 'flex',
+        flexDirection: 'column',
+        alignItems   : 'center',
+        justifyContent: 'center',
+        pointerEvents: 'none',
+      }}
+    >
+      {/* glassmorphism box gets the CSS fade-in (separate element from wrapRef) */}
+      <div style={{
+        textAlign      : 'center',
+        padding        : '36px 56px',
+        background     : 'rgba(8, 14, 28, 0.32)',
+        backdropFilter : 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        borderRadius   : '20px',
+        border         : '1px solid rgba(100, 150, 255, 0.14)',
+        boxShadow      : '0 0 80px rgba(60,100,255,0.08), inset 0 1px 0 rgba(255,255,255,0.06)',
+        animation      : 'heroFadeIn 1.4s ease-out 0.2s both',
+      }}>
+        <p style={{
+          fontFamily   : '"Inter", sans-serif',
+          fontSize     : 'clamp(0.55rem, 0.8vw, 0.68rem)',
+          fontWeight   : 500,
+          letterSpacing: '0.55em',
+          textTransform: 'uppercase',
+          color        : 'rgba(120,170,255,0.60)',
+          margin       : '0 0 14px',
+        }}>
+          A living digital twin
+        </p>
+
+        <h1 style={{
+          fontFamily   : '"Inter", sans-serif',
+          fontSize     : 'clamp(4rem, 10vw, 9.5rem)',
+          fontWeight   : 900,
+          letterSpacing: '0.04em',
+          color        : '#ffffff',
+          margin       : 0,
+          lineHeight   : 0.88,
+          textTransform: 'uppercase',
+          textShadow   : '0 0 80px rgba(100,160,255,0.5), 0 0 160px rgba(60,100,255,0.25)',
+        }}>
+          SYNCITY
+        </h1>
+
+        <p style={{
+          fontFamily   : '"Inter", sans-serif',
+          fontSize     : 'clamp(0.58rem, 0.85vw, 0.72rem)',
+          fontWeight   : 300,
+          letterSpacing: '0.30em',
+          color        : 'rgba(140,180,255,0.40)',
+          margin       : '20px 0 0',
+          textTransform: 'uppercase',
+        }}>
+          Bangalore · 12.97°N · 77.59°E
+        </p>
       </div>
 
-      {/* Text */}
-      <div className="flex-1 max-w-2xl">
-        <h3
-          style={{ fontFamily: 'var(--font-playfair)', fontWeight: 700, fontSize: 'clamp(1.4rem,2.5vw,2rem)', color: '#f5f5f7', lineHeight: 1.2, marginBottom: '1rem' }}
-        >
-          {f.title}
-        </h3>
-        <p style={{ fontFamily: 'var(--font-inter)', fontWeight: 300, fontSize: '1rem', lineHeight: 1.75, color: 'rgba(245,245,247,0.5)', marginBottom: '1.25rem' }}>
-          {f.body}
-        </p>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '10px', letterSpacing: '0.22em', color: 'rgba(245,245,247,0.22)', textTransform: 'uppercase' }}>
-          {f.detail}
-        </p>
+      {/* Scroll hint — own CSS fade-in, no conflict with wrapRef */}
+      <div style={{
+        position     : 'absolute',
+        bottom       : '44px',
+        display      : 'flex',
+        flexDirection: 'column',
+        alignItems   : 'center',
+        gap          : '10px',
+        animation    : 'heroFadeIn 1.4s ease-out 0.5s both',
+      }}>
+        <span style={{
+          fontFamily   : '"Inter", sans-serif',
+          fontSize     : '8px',
+          fontWeight   : 300,
+          letterSpacing: '0.55em',
+          textTransform: 'uppercase',
+          color        : 'rgba(100,150,255,0.30)',
+        }}>
+          Scroll
+        </span>
+        <svg width="12" height="18" viewBox="0 0 12 18" fill="none"
+          style={{ animation: 'bounce 2.2s ease-in-out infinite' }}>
+          <path d="M6 1 L6 13 M2 9 L6 13 L10 9"
+            stroke="rgba(80,130,255,0.28)" strokeWidth="1.1"
+            strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </div>
+
+      <style>{`
+        @keyframes heroFadeIn {
+          from { opacity: 0; transform: translateY(16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes bounce {
+          0%,100% { transform:translateY(0);   opacity:0.28; }
+          50%      { transform:translateY(5px); opacity:0.55; }
+        }
+      `}</style>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-export default function HomePage() {
+// ═════════════════════════════════════════════════════════════════════════════
+export default function Home() {
   return (
-    <main style={{ background: '#09090b' }}>
+    <main style={{ background: '#060c18', color: '#fff' }}>
 
-      {/* ── Section 1: Hero canvas ─────────────────────────────────────── */}
-      <section className="relative h-screen">
-        <HeroCanvas />
-      </section>
+      {/* Fixed R3F canvas */}
+      <HeroCanvas />
 
-      {/* ── Section 2: Features ────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-5 sm:px-12 py-16 sm:py-32">
+      {/* Fixed text overlay */}
+      <TextOverlay />
 
-        {/* Header */}
-        <div className="mb-12 sm:mb-24">
-          <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.5em', color: 'rgba(245,245,247,0.3)', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
-            Platform
+      {/* ── Scroll spacer — drives HeroCanvas GSAP ScrollTrigger ── */}
+      <div id="hero-scroll" style={{ height: '250vh' }} />
+
+      {/* ── Bangalore facts ─────────────────────────────────────── */}
+      <section
+        id="city-facts"
+        style={{
+          background : '#0b1221',
+          borderTop  : '1px solid rgba(60,100,220,0.14)',
+          padding    : 'clamp(64px,8vw,100px) clamp(24px,6vw,80px)',
+          position   : 'relative',
+          zIndex     : 20,
+        }}
+      >
+        <div style={{ marginBottom: '52px' }}>
+          <p style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : '10px',
+            fontWeight   : 500,
+            letterSpacing: '0.50em',
+            textTransform: 'uppercase',
+            color        : 'rgba(74,144,217,0.70)',
+            margin       : '0 0 14px',
+          }}>
+            City Profile
           </p>
-          <h2 style={{ fontFamily: 'var(--font-playfair)', fontWeight: 800, fontSize: 'clamp(2rem,4vw,3.25rem)', color: '#f5f5f7', lineHeight: 1.15, maxWidth: '18ch' }}>
-            What the Platform Understands
+          <h2 style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : 'clamp(2rem, 4vw, 3.2rem)',
+            fontWeight   : 800,
+            letterSpacing: '-0.02em',
+            margin       : 0,
+            color        : '#eef2ff',
+          }}>
+            Bangalore, India
           </h2>
+          <p style={{
+            fontFamily: '"Inter", sans-serif',
+            fontSize  : 'clamp(0.9rem, 1.4vw, 1.05rem)',
+            fontWeight: 300,
+            color     : 'rgba(180,200,240,0.55)',
+            margin    : '12px 0 0',
+            maxWidth  : '520px',
+            lineHeight: 1.65,
+          }}>
+            Silicon Valley of India. Founded in 1537, Bangalore is home to 13.6 million
+            people and drives 40% of India&apos;s technology exports — a city redefining
+            what an intelligent urban ecosystem can be.
+          </p>
         </div>
 
-        {/* Feature rows */}
-        <div className="flex flex-col gap-0">
-          {FEATURES.map((f, i) => (
-            <div key={f.num}>
-              <FeatureCard f={f} idx={i} />
-              {i < FEATURES.length - 1 && (
-                <div className="my-10 sm:my-16" style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
-              )}
+        <div style={{
+          display            : 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+          gap                : '1px',
+          background         : 'rgba(60,100,220,0.08)',
+          border             : '1px solid rgba(60,100,220,0.10)',
+          borderRadius       : '12px',
+          overflow           : 'hidden',
+        }}>
+          {FACTS.map(({ value, label, sub }) => (
+            <div key={label} style={{
+              background: '#0b1221',
+              padding   : 'clamp(20px,2.5vw,32px) clamp(18px,2vw,28px)',
+            }}>
+              <div style={{
+                fontFamily  : '"Inter", sans-serif',
+                fontSize    : 'clamp(1.6rem, 2.8vw, 2.2rem)',
+                fontWeight  : 800,
+                color       : '#b8d0ff',
+                lineHeight  : 1,
+                marginBottom: '8px',
+              }}>
+                {value}
+              </div>
+              <div style={{
+                fontFamily  : '"Inter", sans-serif',
+                fontSize    : '12px',
+                fontWeight  : 500,
+                color       : 'rgba(180,210,255,0.70)',
+                marginBottom: '4px',
+              }}>
+                {label}
+              </div>
+              <div style={{
+                fontFamily: '"Inter", sans-serif',
+                fontSize  : '10px',
+                color     : 'rgba(120,160,220,0.40)',
+              }}>
+                {sub}
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── Section 3: CTA ────────────────────────────────────────────── */}
-      <section className="relative py-20 sm:py-40 px-5 sm:px-6 text-center overflow-hidden">
-        {/* Subtle glow behind */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div style={{ width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%)' }} />
+      {/* ── Module cards ─────────────────────────────────────────── */}
+      <section
+        id="modules"
+        style={{
+          background: '#080e1c',
+          padding   : 'clamp(64px,8vw,100px) clamp(24px,6vw,80px)',
+          position  : 'relative',
+          zIndex    : 20,
+        }}
+      >
+        <div style={{ marginBottom: '52px' }}>
+          <p style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : '10px',
+            fontWeight   : 500,
+            letterSpacing: '0.50em',
+            textTransform: 'uppercase',
+            color        : 'rgba(74,144,217,0.70)',
+            margin       : '0 0 14px',
+          }}>
+            Platform Modules
+          </p>
+          <h2 style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : 'clamp(2rem, 4vw, 3.2rem)',
+            fontWeight   : 800,
+            letterSpacing: '-0.02em',
+            margin       : 0,
+            color        : '#eef2ff',
+          }}>
+            Understand. Analyse. Simulate.
+          </h2>
         </div>
 
-        {/* Concentric rings — fewer on mobile */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          {[160, 280, 420, 580].map((r, i) => (
-            <div key={r} className={`absolute rounded-full ${i >= 2 ? 'hidden sm:block' : ''}`}
-              style={{ width: r, height: r, border: '1px solid rgba(255,255,255,0.04)' }} />
+        <div style={{
+          display            : 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap                : '24px',
+        }}>
+          {MODULES.map(({ href, tag, title, desc, stats, accent }) => (
+            <Link
+              key={href}
+              href={href}
+              style={{ textDecoration: 'none', display: 'block' }}
+            >
+              <div
+                style={{
+                  background  : '#0a1020',
+                  border      : `1px solid rgba(${hexToRgb(accent)},0.15)`,
+                  borderRadius: '16px',
+                  padding     : 'clamp(28px,3vw,40px)',
+                  height      : '100%',
+                  boxSizing   : 'border-box',
+                  transition  : 'border-color 0.25s, transform 0.25s',
+                  cursor      : 'pointer',
+                }}
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLDivElement;
+                  el.style.borderColor = `rgba(${hexToRgb(accent)},0.45)`;
+                  el.style.transform   = 'translateY(-3px)';
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLDivElement;
+                  el.style.borderColor = `rgba(${hexToRgb(accent)},0.15)`;
+                  el.style.transform   = 'translateY(0)';
+                }}
+              >
+                <p style={{
+                  fontFamily   : '"Inter", sans-serif',
+                  fontSize     : '10px',
+                  fontWeight   : 600,
+                  letterSpacing: '0.40em',
+                  textTransform: 'uppercase',
+                  color        : accent,
+                  margin       : '0 0 16px',
+                }}>
+                  {tag}
+                </p>
+
+                <h3 style={{
+                  fontFamily   : '"Inter", sans-serif',
+                  fontSize     : 'clamp(1.4rem, 2.2vw, 1.8rem)',
+                  fontWeight   : 800,
+                  letterSpacing: '-0.02em',
+                  color        : '#eef2ff',
+                  margin       : '0 0 16px',
+                }}>
+                  {title}
+                </h3>
+
+                <p style={{
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize  : '14px',
+                  fontWeight: 300,
+                  color     : 'rgba(180,200,240,0.55)',
+                  lineHeight: 1.70,
+                  margin    : '0 0 28px',
+                }}>
+                  {desc}
+                </p>
+
+                <div style={{
+                  display  : 'flex',
+                  gap      : '24px',
+                  paddingTop: '20px',
+                  borderTop: `1px solid rgba(${hexToRgb(accent)},0.10)`,
+                }}>
+                  {stats.map(({ v, l }) => (
+                    <div key={l}>
+                      <div style={{
+                        fontFamily: '"Inter", sans-serif',
+                        fontSize  : '1.1rem',
+                        fontWeight: 700,
+                        color     : accent,
+                        lineHeight: 1,
+                      }}>
+                        {v}
+                      </div>
+                      <div style={{
+                        fontFamily: '"Inter", sans-serif',
+                        fontSize  : '10px',
+                        color     : 'rgba(140,170,220,0.45)',
+                        marginTop : '4px',
+                      }}>
+                        {l}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{
+                  marginTop   : '24px',
+                  display     : 'flex',
+                  alignItems  : 'center',
+                  gap         : '8px',
+                  color       : accent,
+                  fontFamily  : '"Inter", sans-serif',
+                  fontSize    : '12px',
+                  fontWeight  : 600,
+                  letterSpacing: '0.05em',
+                }}>
+                  <span>Open Module</span>
+                  <span style={{ fontSize: '16px', lineHeight: 1 }}>→</span>
+                </div>
+              </div>
+            </Link>
           ))}
         </div>
 
-        <div className="relative z-10">
-          <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.5em', color: 'rgba(245,245,247,0.3)', textTransform: 'uppercase', marginBottom: '1.5rem' }}>
-            Begin
-          </p>
-          <h2 style={{ fontFamily: 'var(--font-playfair)', fontWeight: 800, fontSize: 'clamp(2.2rem,5vw,4rem)', color: '#f5f5f7', lineHeight: 1.1, marginBottom: '1.25rem' }}>
-            The City Awaits Observation
-          </h2>
-          <p style={{ fontFamily: 'var(--font-inter)', fontWeight: 300, fontSize: '1rem', color: 'rgba(245,245,247,0.4)', maxWidth: '36ch', margin: '0 auto 3rem', lineHeight: 1.75 }}>
-            Step into the digital observatory. Monitor, predict, and shape the living intelligence of Bengaluru.
-          </p>
-
-          <Link
-            href="/explore"
-            className="inline-flex items-center gap-3 group"
-            style={{
-              fontFamily: 'var(--font-inter)',
-              fontSize: '11px',
-              letterSpacing: '0.3em',
-              textTransform: 'uppercase',
-              color: '#f5f5f7',
-              border: '1px solid rgba(255,255,255,0.15)',
-              padding: '14px 32px',
-              background: 'rgba(255,255,255,0.05)',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.3s',
-            }}
-          >
-            Enter City Intelligence
-            <span style={{ opacity: 0.4, transition: 'transform 0.3s' }} className="group-hover:translate-x-1">→</span>
-          </Link>
-
-          <div className="flex items-center justify-center gap-8 sm:gap-10 mt-8 sm:mt-10">
-            {[
-              { href: '/analytics',  label: 'Analytics' },
-              { href: '/simulation', label: 'Simulation' },
-            ].map(({ href, label }) => (
-              <Link key={href} href={href}
-                style={{ fontFamily: 'var(--font-inter)', fontSize: '10px', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.28)' }}
-                className="hover:text-white/60 transition-colors duration-300"
-              >
-                {label}
-              </Link>
-            ))}
-          </div>
+        <div style={{
+          marginTop     : '80px',
+          paddingTop    : '32px',
+          borderTop     : '1px solid rgba(60,100,220,0.08)',
+          display       : 'flex',
+          justifyContent: 'space-between',
+          alignItems    : 'center',
+          flexWrap      : 'wrap',
+          gap           : '16px',
+        }}>
+          <span style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : '11px',
+            color        : 'rgba(120,160,220,0.30)',
+            letterSpacing: '0.05em',
+          }}>
+            SynCity · Urban Intelligence Platform · 12.97°N 77.59°E · Bangalore
+          </span>
+          <span style={{
+            fontFamily: '"Inter", sans-serif',
+            fontSize  : '11px',
+            color     : 'rgba(120,160,220,0.20)',
+          }}>
+            Systems Online
+          </span>
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────────────── */}
-      <footer className="px-6 sm:px-12 py-8 flex flex-col sm:flex-row items-center justify-between gap-4"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.4em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.25)' }}>
-          SYNCITY
-        </p>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(245,245,247,0.15)' }}>
-          Urban Digital Twin · Bengaluru · 12.97°N 77.59°E
-        </p>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(245,245,247,0.15)' }}>
-          2025
-        </p>
-      </footer>
-
     </main>
   );
+}
+
+function hexToRgb(hex: string): string {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
 }
