@@ -16,6 +16,7 @@
     "@types/mapbox-gl": "^3.4.1",
     "framer-motion": "^11.3.21",
     "gsap": "^3.12.5",
+    "leva": "^0.10.1",
     "lucide-react": "^0.577.0",
     "mapbox-gl": "^3.20.0",
     "maplibre-gl": "^5.20.2",
@@ -24,7 +25,8 @@
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^3.8.0",
-    "three": "^0.166.1"
+    "three": "^0.166.1",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/node": "^20",

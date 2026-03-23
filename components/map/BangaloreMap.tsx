@@ -24,13 +24,10 @@ interface Slide {
 }
 
 const SEQUENCE: Slide[] = [
-  { text: 'A CITY LIKE NO OTHER' },
-  { text: '13.6 MILLION',            sub: 'People call it home' },
-  { text: "INDIA'S SILICON VALLEY",  sub: '2,000+ startups · $110B tech economy' },
-  { text: '210+',                    sub: 'Natural lakes within city limits' },
-  { text: '12,847',                  sub: 'Active IoT sensors across Bangalore' },
-  { text: '920 METRES',              sub: 'Above sea level — the garden city' },
-  { text: 'WELCOME TO BANGALORE',    large: true, warm: true },
+  { text: '13.6 MILLION',           sub: 'People call it home' },
+  { text: "INDIA'S SILICON VALLEY", sub: '2,000+ startups · $110B tech economy' },
+  { text: '920 METRES',             sub: 'Above sea level — the garden city' },
+  { text: 'WELCOME TO BANGALORE',   large: true, warm: true },
 ];
 
 /* ── Neighbourhood points-of-interest ────────────────────────────────────── */
