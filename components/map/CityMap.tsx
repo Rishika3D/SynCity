@@ -5,13 +5,13 @@
  * CityMap — MapLibre GL JS 3D city engine.
  *
  * Features
- *  ─ Dark CARTO base map
+ *  ─ Dark Mapbox base map
  *  ─ 3D building extrusions with depth-graded colour
  *  ─ Cinematic fly-in from altitude to street level
- *  ─ Temperature heatmap   (toggle)
- *  ─ Air-quality heatmap   (toggle)
+ *  ─ Temperature heatmap   (real Open-Meteo data, 14 district points)
+ *  ─ Air-quality heatmap   (real Open-Meteo air quality data, 14 district points)
  *  ─ IoT sensor markers    (toggle)
- *  ─ Traffic flow lines    (toggle)
+ *  ─ Traffic congestion    (real Mapbox traffic-v1 tileset)
  *  ─ Custom dark popup on sensor click
  */
 
@@ -26,8 +26,25 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const BANGALORE: [number, number] = [77.5946, 12.9716];
-
 const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
+
+// 14 Bangalore district sample coordinates for Open-Meteo fetches
+const DISTRICT_POINTS = [
+  { lat: 12.9342, lng: 77.6268 }, // Koramangala
+  { lat: 12.9762, lng: 77.6033 }, // MG Road
+  { lat: 12.9174, lng: 77.6226 }, // Silk Board
+  { lat: 12.9591, lng: 77.6974 }, // Marathahalli
+  { lat: 12.8458, lng: 77.6603 }, // Electronic City
+  { lat: 13.0250, lng: 77.5500 }, // Yeshwanthpur
+  { lat: 12.9250, lng: 77.5938 }, // Jayanagar
+  { lat: 12.9716, lng: 77.5946 }, // City Centre
+  { lat: 12.9010, lng: 77.6855 }, // Sarjapur
+  { lat: 13.0358, lng: 77.5972 }, // Hebbal
+  { lat: 13.1007, lng: 77.5963 }, // Yelahanka
+  { lat: 12.9784, lng: 77.6408 }, // Indiranagar
+  { lat: 12.9166, lng: 77.6101 }, // BTM Layout
+  { lat: 12.9254, lng: 77.5468 }, // Banashankari
+];
 
 // ── Sensor data ───────────────────────────────────────────────────────────────
 
@@ -52,81 +69,69 @@ const SENSORS: SensorLocation[] = [
   { id: 's18', name: 'Sarjapur Road',     lat: 12.9010, lng: 77.6855, type: 'air',     value: 110, status: 'online'  },
 ];
 
-// ── Traffic routes (simplified road centrelines) ──────────────────────────────
+// ── Real data fetchers (Open-Meteo, free, no key) ─────────────────────────────
 
-const TRAFFIC_ROUTES: { name: string; intensity: number; coords: [number, number][] }[] = [
-  { name: 'Outer Ring Road',  intensity: 0.90, coords: [[77.6015,12.9343],[77.6174,12.9277],[77.6358,12.9284],[77.6504,12.9338],[77.6614,12.9447],[77.6698,12.9591],[77.6749,12.9698],[77.6719,12.9838],[77.6604,12.9968],[77.6442,13.0077]] },
-  { name: 'Whitefield Rd',    intensity: 0.70, coords: [[77.6033,12.9762],[77.6199,12.9727],[77.6389,12.9699],[77.6622,12.9698],[77.6812,12.9700],[77.7099,12.9699],[77.7342,12.9698],[77.7499,12.9698]] },
-  { name: 'NH44 North',       intensity: 0.80, coords: [[77.5946,12.9716],[77.5946,13.0000],[77.5946,13.0500],[77.5972,13.0800],[77.5963,13.1007]] },
-  { name: 'NH44 South',       intensity: 0.85, coords: [[77.5946,12.9716],[77.5946,12.9200],[77.5946,12.8700],[77.5946,12.8458]] },
-  { name: 'Hosur Road',       intensity: 0.75, coords: [[77.5946,12.9716],[77.6050,12.9400],[77.6200,12.9100],[77.6350,12.8800],[77.6603,12.8458]] },
-  { name: 'Tumkur Road',      intensity: 0.65, coords: [[77.5946,12.9716],[77.5750,13.0000],[77.5550,13.0300],[77.5300,13.0600]] },
-  { name: 'MG Road',          intensity: 0.70, coords: [[77.5946,12.9716],[77.6033,12.9762],[77.6150,12.9780],[77.6250,12.9760],[77.6350,12.9730]] },
-  { name: 'Bannerghatta Rd',  intensity: 0.60, coords: [[77.5946,12.9716],[77.5938,12.9250],[77.5900,12.8900],[77.5940,12.8600]] },
-  { name: 'Airport Road',     intensity: 0.55, coords: [[77.6033,12.9762],[77.6112,12.9880],[77.6050,13.0100],[77.5990,13.0350],[77.5972,13.0500]] },
-];
+async function fetchTemperatureHeatmap(): Promise<GeoJSON.FeatureCollection> {
+  const results = await Promise.all(
+    DISTRICT_POINTS.map(d =>
+      fetch(
+        `https://api.open-meteo.com/v1/forecast` +
+        `?latitude=${d.lat}&longitude=${d.lng}` +
+        `&current=temperature_2m&timezone=Asia%2FKolkata`,
+      )
+        .then(r => r.json())
+        .then(j => ({ ...d, temp: j.current?.temperature_2m as number ?? 32 }))
+        .catch(() => ({ ...d, temp: 32 })),
+    ),
+  );
 
-// ── Heatmap data generators ───────────────────────────────────────────────────
+  const temps = results.map(r => r.temp);
+  const min   = Math.min(...temps);
+  const max   = Math.max(...temps);
+  const range = max - min || 1;
 
-type Hotspot = { lat: number; lng: number; base: number; radius: number; count?: number };
-
-function buildHeatmap(
-  hotspots: Hotspot[],
-  prop: string,
-): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = [];
-  for (const spot of hotspots) {
-    const n = spot.count ?? 60;
-    for (let i = 0; i < n; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist  = Math.sqrt(Math.random()) * spot.radius; // square root for uniform disc distribution
-      features.push({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [
-            spot.lng + Math.cos(angle) * dist,
-            spot.lat + Math.sin(angle) * dist,
-          ],
-        },
-        properties: {
-          [prop]: spot.base + (Math.random() - 0.5) * (spot.base * 0.12),
-          weight: Math.max(0, 1 - dist / spot.radius * 0.6),
-        },
-      });
-    }
-  }
-  return { type: 'FeatureCollection', features };
+  return {
+    type: 'FeatureCollection',
+    features: results.map(r => ({
+      type:     'Feature',
+      geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
+      properties: {
+        temperature: r.temp,
+        weight:      (r.temp - min) / range,  // 0–1 normalised
+      },
+    })),
+  };
 }
 
-function temperatureData(): GeoJSON.FeatureCollection {
-  return buildHeatmap([
-    { lat: 12.9342, lng: 77.6268, base: 34, radius: 0.040 }, // Koramangala
-    { lat: 12.9762, lng: 77.6033, base: 33, radius: 0.030 }, // MG Road
-    { lat: 12.9174, lng: 77.6226, base: 35, radius: 0.025 }, // Silk Board
-    { lat: 12.9591, lng: 77.6974, base: 33, radius: 0.040 }, // Marathahalli
-    { lat: 12.8458, lng: 77.6603, base: 32, radius: 0.050 }, // Electronic City
-    { lat: 13.0250, lng: 77.5500, base: 31, radius: 0.040 }, // Yeshwanthpur
-    { lat: 12.9250, lng: 77.5938, base: 29, radius: 0.055 }, // Jayanagar (parks)
-    { lat: 12.9716, lng: 77.5946, base: 32, radius: 0.060 }, // City centre
-    { lat: 12.9010, lng: 77.6855, base: 32, radius: 0.035 }, // Sarjapur
-  ], 'temperature');
+async function fetchAqiHeatmap(): Promise<GeoJSON.FeatureCollection> {
+  // /api/aqi fetches Open-Meteo CAMS data server-side for all 14 districts, cached 5 min.
+  const res = await fetch('/api/aqi');
+  if (!res.ok) throw new Error('AQI proxy error');
+
+  const json = await res.json();
+  const points = json.points as Array<{ lat: number; lng: number; pm25: number; aqi: number }>;
+
+  if (!points?.length) throw new Error('No AQI points');
+
+  const values = points.map(p => p.aqi);
+  const min    = Math.min(...values);
+  const max    = Math.max(...values);
+  const range  = max - min || 1;
+
+  return {
+    type: 'FeatureCollection',
+    features: points.map(p => ({
+      type:     'Feature',
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+      properties: { pm25: p.pm25, aqi: p.aqi, weight: (p.aqi - min) / range },
+    })),
+  };
 }
 
-function pollutionData(): GeoJSON.FeatureCollection {
-  return buildHeatmap([
-    { lat: 12.9174, lng: 77.6226, base: 180, radius: 0.035 }, // Silk Board — worst
-    { lat: 12.9762, lng: 77.6033, base: 155, radius: 0.025 }, // MG Road
-    { lat: 12.9591, lng: 77.6974, base: 145, radius: 0.030 }, // Marathahalli
-    { lat: 13.0358, lng: 77.5972, base: 130, radius: 0.040 }, // Hebbal (highway)
-    { lat: 12.9166, lng: 77.6101, base: 120, radius: 0.030 }, // BTM Layout
-    { lat: 12.9784, lng: 77.6408, base: 135, radius: 0.025 }, // Indiranagar
-    { lat: 12.9250, lng: 77.5938, base: 70,  radius: 0.055 }, // Jayanagar (green)
-    { lat: 13.1007, lng: 77.5963, base: 65,  radius: 0.040 }, // Yelahanka (clean)
-    { lat: 12.8458, lng: 77.6603, base: 90,  radius: 0.050 }, // Electronic City
-    { lat: 12.9010, lng: 77.6855, base: 110, radius: 0.035 }, // Sarjapur
-  ], 'aqi');
-}
+
+// ── Empty GeoJSON placeholder (used while real data loads) ────────────────────
+
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 // ── Helper — first symbol layer id ───────────────────────────────────────────
 
@@ -198,14 +203,13 @@ export default function CityMap({ activeLayers }: CityMapProps) {
       container:    containerRef.current,
       style:        MAP_STYLE,
       center:       BANGALORE,
-      zoom:         9,          // fly-in start
+      zoom:         9,
       pitch:        20,
       bearing:      0,
       antialias:    true,
       attributionControl: false,
     });
 
-    // Controls
     map.addControl(
       new mapboxgl.AttributionControl({ compact: true }),
       'bottom-left',
@@ -218,10 +222,10 @@ export default function CityMap({ activeLayers }: CityMapProps) {
     mapRef.current = map;
 
     map.on('load', () => {
-      // ── 3D buildings ─────────────────────────────────────────────────────
-      try {
-        const beforeId = firstSymbolLayer(map);
+      const beforeId = firstSymbolLayer(map);
 
+      // ── 3D buildings ───────────────────────────────────────────────────────
+      try {
         const heightExpr: ExpressionSpecification = [
           'interpolate', ['linear'], ['zoom'],
           13,   0,
@@ -232,14 +236,13 @@ export default function CityMap({ activeLayers }: CityMapProps) {
           13,   0,
           13.5, ['coalesce', ['get', 'min_height'], 0],
         ];
-        // Pastel yellow gradient — short buildings are softer, tall ones richer
         const colourExpr: ExpressionSpecification = [
           'interpolate', ['linear'],
           ['coalesce', ['get', 'height'], 0],
-          0,   '#fdf3c0',   // very soft cream-yellow
-          20,  '#f9e87a',   // light pastel yellow
-          60,  '#f5d84a',   // mid pastel yellow
-          150, '#e8c62a',   // warm golden yellow for towers
+          0,   '#fdf3c0',
+          20,  '#f9e87a',
+          60,  '#f5d84a',
+          150, '#e8c62a',
         ];
 
         const buildingLayer: LayerSpecification = {
@@ -265,42 +268,42 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         console.warn('[CityMap] 3D buildings unavailable:', err);
       }
 
-      // ── Temperature heatmap ───────────────────────────────────────────────
-      map.addSource('src-temperature', { type: 'geojson', data: temperatureData() });
+      // ── Temperature heatmap (starts empty, fills from Open-Meteo) ─────────
+      map.addSource('src-temperature', { type: 'geojson', data: EMPTY_FC });
       map.addLayer({
         id:     'temperature-heat',
         type:   'heatmap',
         source: 'src-temperature',
         paint:  {
-          'heatmap-weight':     ['get', 'weight'] as ExpressionSpecification,
-          'heatmap-intensity':  ['interpolate', ['linear'], ['zoom'], 9, 1, 14, 3] as ExpressionSpecification,
-          'heatmap-radius':     ['interpolate', ['linear'], ['zoom'], 9, 22, 14, 44] as ExpressionSpecification,
-          'heatmap-opacity':    0.72,
+          'heatmap-weight':     ['interpolate', ['linear'], ['get', 'weight'], 0, 0.2, 1, 1] as ExpressionSpecification,
+          'heatmap-intensity':  ['interpolate', ['linear'], ['zoom'], 9, 1.5, 14, 4] as ExpressionSpecification,
+          'heatmap-radius':     ['interpolate', ['linear'], ['zoom'], 9, 80, 14, 160] as ExpressionSpecification,
+          'heatmap-opacity':    0.78,
           'heatmap-color': [
             'interpolate', ['linear'], ['heatmap-density'],
-            0,   'rgba(0,0,0,0)',
-            0.15,'rgba(0,100,220,0)',
-            0.35,'rgba(0,220,255,0.45)',
-            0.55,'rgba(0,255,180,0.65)',
-            0.75,'rgba(255,200,0,0.75)',
-            0.90,'rgba(255,80,0,0.85)',
-            1,   'rgba(255,0,0,0.92)',
+            0,    'rgba(0,0,0,0)',
+            0.15, 'rgba(0,100,220,0)',
+            0.35, 'rgba(0,220,255,0.45)',
+            0.55, 'rgba(0,255,180,0.65)',
+            0.75, 'rgba(255,200,0,0.75)',
+            0.90, 'rgba(255,80,0,0.85)',
+            1,    'rgba(255,0,0,0.92)',
           ] as ExpressionSpecification,
         },
         layout: { visibility: 'none' },
       });
 
-      // ── Air-quality heatmap ───────────────────────────────────────────────
-      map.addSource('src-pollution', { type: 'geojson', data: pollutionData() });
+      // ── Air-quality heatmap (starts empty, fills from Open-Meteo) ─────────
+      map.addSource('src-pollution', { type: 'geojson', data: EMPTY_FC });
       map.addLayer({
         id:     'pollution-heat',
         type:   'heatmap',
         source: 'src-pollution',
         paint: {
-          'heatmap-weight':    ['get', 'weight'] as ExpressionSpecification,
-          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 1, 14, 2.5] as ExpressionSpecification,
-          'heatmap-radius':    ['interpolate', ['linear'], ['zoom'], 9, 26, 14, 50] as ExpressionSpecification,
-          'heatmap-opacity':   0.68,
+          'heatmap-weight':    ['interpolate', ['linear'], ['get', 'weight'], 0, 0.2, 1, 1] as ExpressionSpecification,
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 14, 3.5] as ExpressionSpecification,
+          'heatmap-radius':    ['interpolate', ['linear'], ['zoom'], 9, 85, 14, 170] as ExpressionSpecification,
+          'heatmap-opacity':   0.72,
           'heatmap-color': [
             'interpolate', ['linear'], ['heatmap-density'],
             0,   'rgba(0,0,0,0)',
@@ -314,16 +317,21 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         layout: { visibility: 'none' },
       });
 
-      // ── Sensors — GeoJSON source ──────────────────────────────────────────
+      // ── Fetch real Open-Meteo data and populate heatmaps ──────────────────
+      const alive = { current: true };
+      Promise.all([fetchTemperatureHeatmap(), fetchAqiHeatmap()]).then(([tempFC, aqiFC]) => {
+        if (!alive.current || !mapRef.current) return;
+        (map.getSource('src-temperature') as mapboxgl.GeoJSONSource)?.setData(tempFC);
+        (map.getSource('src-pollution')   as mapboxgl.GeoJSONSource)?.setData(aqiFC);
+      }).catch(err => console.warn('[CityMap] Open-Meteo fetch failed:', err));
+
+      // ── Sensors ────────────────────────────────────────────────────────────
       const sensorFC: GeoJSON.FeatureCollection = {
         type: 'FeatureCollection',
         features: SENSORS.map(s => ({
           type:     'Feature',
           geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-          properties: {
-            id: s.id, name: s.name, type: s.type,
-            value: s.value, status: s.status,
-          },
+          properties: { id: s.id, name: s.name, type: s.type, value: s.value, status: s.status },
         })),
       };
       map.addSource('src-sensors', { type: 'geojson', data: sensorFC });
@@ -335,7 +343,6 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         '#00EEFF',
       ];
 
-      // Outer glow ring
       map.addLayer({
         id: 'sensors-glow', type: 'circle', source: 'src-sensors',
         paint: {
@@ -347,7 +354,6 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         layout: { visibility: 'visible' },
       });
 
-      // Inner dot
       map.addLayer({
         id: 'sensors-dot', type: 'circle', source: 'src-sensors',
         paint: {
@@ -360,7 +366,6 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         layout: { visibility: 'visible' },
       });
 
-      // Label (visible only when zoomed in)
       map.addLayer({
         id: 'sensors-label', type: 'symbol', source: 'src-sensors',
         minzoom: 12,
@@ -379,17 +384,13 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         },
       });
 
-      // Click → popup
       map.on('click', 'sensors-dot', e => {
         if (!e.features?.[0]) return;
         const props = e.features[0].properties as Record<string, unknown>;
         const coord = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
         popupRef.current?.remove();
         popupRef.current = new mapboxgl.Popup({
-          offset:      12,
-          closeButton: true,
-          maxWidth:    '240px',
-          className:   'syncity-popup',
+          offset: 12, closeButton: true, maxWidth: '240px', className: 'syncity-popup',
         })
           .setLngLat(coord)
           .setHTML(sensorPopupHtml(props))
@@ -398,53 +399,61 @@ export default function CityMap({ activeLayers }: CityMapProps) {
       map.on('mouseenter', 'sensors-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'sensors-dot', () => { map.getCanvas().style.cursor = ''; });
 
-      // ── Traffic lines ─────────────────────────────────────────────────────
-      const trafficFC: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: TRAFFIC_ROUTES.map(r => ({
-          type:     'Feature',
-          geometry: { type: 'LineString', coordinates: r.coords },
-          properties: { name: r.name, intensity: r.intensity },
-        })),
-      };
-      map.addSource('src-traffic', { type: 'geojson', data: trafficFC });
+      // ── Traffic congestion — real Mapbox traffic-v1 tileset ───────────────
+      // Congestion values: 'low' | 'moderate' | 'heavy' | 'severe'
+      map.addSource('mapbox-traffic', {
+        type: 'vector',
+        url:  'mapbox://mapbox.mapbox-traffic-v1',
+      });
 
-      const lineColour: ExpressionSpecification = [
-        'interpolate', ['linear'], ['get', 'intensity'],
-        0,   '#00EEFF',
-        0.5, '#00FF88',
-        0.8, '#FF7722',
-        1.0, '#FF3300',
+      const congestionColor: ExpressionSpecification = [
+        'match', ['get', 'congestion'],
+        'low',      '#00FF88',
+        'moderate', '#FFCC00',
+        'heavy',    '#FF7722',
+        'severe',   '#FF2222',
+        'rgba(0,238,255,0.3)',
       ];
 
-      // Wide glow pass
+      // Wide blur glow for heat-like feel
       map.addLayer({
-        id: 'traffic-glow', type: 'line', source: 'src-traffic',
+        id:     'traffic-congestion-glow',
+        type:   'line',
+        source: 'mapbox-traffic',
+        'source-layer': 'traffic',
         layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'visible' },
-        paint: { 'line-color': lineColour, 'line-width': 14, 'line-opacity': 0.14, 'line-blur': 5 },
+        paint: {
+          'line-color':   congestionColor,
+          'line-width':   ['interpolate', ['linear'], ['zoom'], 9, 6, 14, 18] as ExpressionSpecification,
+          'line-blur':    5,
+          'line-opacity': 0.22,
+        },
       });
 
-      // Core line
+      // Core congestion line
       map.addLayer({
-        id: 'traffic-line', type: 'line', source: 'src-traffic',
+        id:     'traffic-congestion-line',
+        type:   'line',
+        source: 'mapbox-traffic',
+        'source-layer': 'traffic',
         layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'visible' },
-        paint: { 'line-color': lineColour, 'line-width': 2.5, 'line-opacity': 0.88 },
+        paint: {
+          'line-color':   congestionColor,
+          'line-width':   ['interpolate', ['linear'], ['zoom'], 9, 1.5, 14, 4] as ExpressionSpecification,
+          'line-opacity': 0.88,
+        },
       });
 
-      // ── Done — trigger fly-in ─────────────────────────────────────────────
       setLoaded(true);
 
       setTimeout(() => {
         map.flyTo({
-          center:   BANGALORE,
-          zoom:     13.5,
-          pitch:    62,
-          bearing:  22,
-          duration: 4800,
-          essential: true,
-          curve:    1.5,
+          center: BANGALORE, zoom: 13.5, pitch: 62, bearing: 22,
+          duration: 4800, essential: true, curve: 1.5,
         });
       }, 700);
+
+      return () => { alive.current = false; };
     });
 
     return () => {
@@ -452,7 +461,7 @@ export default function CityMap({ activeLayers }: CityMapProps) {
       map.remove();
       mapRef.current = null;
     };
-  }, []); // intentionally empty — map initialises once
+  }, []);
 
   // ── Sync layer visibility when props change ────────────────────────────────
   useEffect(() => {
@@ -463,7 +472,7 @@ export default function CityMap({ activeLayers }: CityMapProps) {
       temperature: ['temperature-heat'],
       pollution:   ['pollution-heat'],
       sensors:     ['sensors-glow', 'sensors-dot', 'sensors-label'],
-      traffic:     ['traffic-glow', 'traffic-line'],
+      traffic:     ['traffic-congestion-glow', 'traffic-congestion-line'],
     };
 
     for (const [id, visible] of Object.entries(activeLayers)) {
