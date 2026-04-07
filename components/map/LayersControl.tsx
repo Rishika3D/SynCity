@@ -173,7 +173,7 @@ export default function LayersControl({ activeLayers, onToggle }: LayersControlP
         >
           <span className="w-1 h-1 rounded-full bg-white/15" />
           <span className="font-mono text-[9px] text-white/18 tracking-wider">
-            Bangalore · 18 nodes online
+            Bangalore · 14 districts
           </span>
         </div>
       )}

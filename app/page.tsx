@@ -298,12 +298,25 @@ function IntroOverlay({ onDone }: { onDone: () => void }) {
    ══════════════════════════════════════════════════════════════════════ */
 export default function Home() {
   const [entered, setEntered] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+    if (sessionStorage.getItem('syncity_intro_done') === '1') {
+      setEntered(true);
+    }
+  }, []);
+
+  const handleDone = () => {
+    sessionStorage.setItem('syncity_intro_done', '1');
+    setEntered(true);
+  };
 
   return (
     <main style={{ background: '#0d1826', color: '#fff' }}>
 
       {/* ── Intro overlay ─────────────────────────────────── */}
-      {!entered && <IntroOverlay onDone={() => setEntered(true)} />}
+      {hydrated && !entered && <IntroOverlay onDone={handleDone} />}
 
       {/* ── Bangalore map — full page hero with modules built in ── */}
       <BangaloreMap started={entered} />

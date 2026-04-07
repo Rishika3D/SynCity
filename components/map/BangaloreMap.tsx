@@ -264,17 +264,6 @@ export default function BangaloreMap({ started }: Props) {
         duration: 6000,
         easing  : (t: number) => 1 - Math.pow(1 - t, 3),
       });
-
-      setTimeout(() => {
-        map.easeTo({
-          center  : [77.6271, 12.9500],
-          zoom    : 13.0,
-          bearing : -6,
-          pitch   : 45,
-          duration: 4500,
-          easing  : (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
-        });
-      }, 6500);
     };
 
     if (mapRef.current?.loaded()) {

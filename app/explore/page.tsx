@@ -16,6 +16,7 @@ import { useState } from 'react';
 import LayersControl from '@/components/map/LayersControl';
 import CityStatsPanel from '@/components/ui/CityStatsPanel';
 import WeatherCard from '@/components/ui/WeatherCard';
+import AqiBreakdownCard from '@/components/ui/AqiBreakdownCard';
 import type { LayerId, LayerState } from '@/types/map';
 
 // ── Dynamic import — MapLibre GL JS is browser-only ──────────────────────────
@@ -48,6 +49,7 @@ const INITIAL_LAYERS: LayerState = {
 // ── Page component ────────────────────────────────────────────────────────────
 export default function ExplorePage() {
   const [activeLayers, setActiveLayers] = useState<LayerState>(INITIAL_LAYERS);
+  const [rightOpen,    setRightOpen]    = useState(true);
 
   const handleToggle = (id: LayerId) =>
     setActiveLayers(prev => ({ ...prev, [id]: !prev[id] }));
@@ -113,13 +115,79 @@ export default function ExplorePage() {
         <LayersControl activeLayers={activeLayers} onToggle={handleToggle} />
       </aside>
 
+      {/* ── Dashboard mini-badge (top-right corner when panel collapsed) ─ */}
+      {!rightOpen && (
+        <button
+          onClick={() => setRightOpen(true)}
+          className="absolute z-20 flex items-center gap-2 px-3 py-2 rounded-lg"
+          style={{
+            top:                  '72px',
+            right:                '4px',
+            background:           'rgba(9,9,11,0.88)',
+            backdropFilter:       'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+            border:               '1px solid rgba(0,238,255,0.12)',
+            boxShadow:            '0 0 24px rgba(0,0,0,0.5)',
+          }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full animate-pulse"
+            style={{ background: '#00EEFF', boxShadow: '0 0 4px #00EEFF' }}
+          />
+          <span className="font-mono text-[9px] text-white/50 tracking-[0.22em] uppercase">
+            Dashboard
+          </span>
+          <span style={{ fontSize: '7px', color: 'rgba(0,238,255,0.40)' }}>◀</span>
+        </button>
+      )}
+
+      {/* ── Right panel collapse tab ────────────────────────────────── */}
+      <button
+        onClick={() => setRightOpen(o => !o)}
+        className="absolute z-20 flex items-center justify-center"
+        style={{
+          top:          '96px',
+          right:        rightOpen ? '292px' : '0px',
+          width:        '18px',
+          height:       '52px',
+          background:   'rgba(9,9,11,0.88)',
+          backdropFilter: 'blur(24px)',
+          border:       '1px solid rgba(0,238,255,0.12)',
+          borderRadius: '6px 0 0 6px',
+          transition:   'right 0.3s ease',
+          cursor:       'pointer',
+        }}
+      >
+        <span
+          style={{
+            fontSize:   '8px',
+            color:      'rgba(0,238,255,0.45)',
+            display:    'block',
+            transition: 'transform 0.3s ease',
+            transform:  rightOpen ? 'rotate(0deg)' : 'rotate(180deg)',
+          }}
+        >
+          ▶
+        </span>
+      </button>
+
       {/* ── Right — Weather card + City stats ──────────────────────── */}
       <aside
-        className="absolute right-4 z-20 flex flex-col gap-3"
-        style={{ top: '72px', bottom: '36px', width: '272px' }}
+        className="absolute z-20 flex flex-col gap-3"
+        style={{
+          top:        '72px',
+          bottom:     '36px',
+          right:      rightOpen ? '4px' : '-288px',
+          width:      '272px',
+          overflowY:  'auto',
+          overflowX:  'hidden',
+          transition: 'right 0.3s ease',
+          scrollbarWidth: 'none',
+        }}
       >
         <WeatherCard />
         <CityStatsPanel />
+        {activeLayers.pollution && <AqiBreakdownCard />}
       </aside>
 
       {/* ── Bottom gradient + status bar ───────────────────────────── */}

@@ -104,26 +104,26 @@ async function fetchTemperatureHeatmap(): Promise<GeoJSON.FeatureCollection> {
 }
 
 async function fetchAqiHeatmap(): Promise<GeoJSON.FeatureCollection> {
-  // /api/aqi fetches Open-Meteo CAMS data server-side for all 14 districts, cached 5 min.
-  const res = await fetch('/api/aqi');
-  if (!res.ok) throw new Error('AQI proxy error');
+  // /api/waqi fetches real CPCB ground-station AQI from WAQI for 10 Bangalore stations.
+  const res = await fetch('/api/waqi');
+  if (!res.ok) throw new Error('WAQI proxy error');
 
-  const json = await res.json();
-  const points = json.points as Array<{ lat: number; lng: number; pm25: number; aqi: number }>;
+  const json     = await res.json();
+  const stations = json.stations as Array<{ lat: number; lng: number; name: string; aqi: number }>;
 
-  if (!points?.length) throw new Error('No AQI points');
+  if (!stations?.length) throw new Error('No WAQI stations');
 
-  const values = points.map(p => p.aqi);
+  const values = stations.map(s => s.aqi);
   const min    = Math.min(...values);
   const max    = Math.max(...values);
   const range  = max - min || 1;
 
   return {
     type: 'FeatureCollection',
-    features: points.map(p => ({
+    features: stations.map(s => ({
       type:     'Feature',
-      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-      properties: { pm25: p.pm25, aqi: p.aqi, weight: (p.aqi - min) / range },
+      geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+      properties: { aqi: s.aqi, name: s.name, weight: (s.aqi - min) / range },
     })),
   };
 }
@@ -317,13 +317,13 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         layout: { visibility: 'none' },
       });
 
-      // ── Fetch real Open-Meteo data and populate heatmaps ──────────────────
+      // ── Fetch real data and populate heatmaps ─────────────────────────────
       const alive = { current: true };
       Promise.all([fetchTemperatureHeatmap(), fetchAqiHeatmap()]).then(([tempFC, aqiFC]) => {
         if (!alive.current || !mapRef.current) return;
         (map.getSource('src-temperature') as mapboxgl.GeoJSONSource)?.setData(tempFC);
         (map.getSource('src-pollution')   as mapboxgl.GeoJSONSource)?.setData(aqiFC);
-      }).catch(err => console.warn('[CityMap] Open-Meteo fetch failed:', err));
+      }).catch(err => console.warn('[CityMap] Heatmap fetch failed:', err));
 
       // ── Sensors ────────────────────────────────────────────────────────────
       const sensorFC: GeoJSON.FeatureCollection = {
