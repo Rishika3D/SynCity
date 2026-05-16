@@ -20,6 +20,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { LayerState, LayerId, SensorLocation } from '@/types/map';
 import type { ExpressionSpecification, LayerSpecification } from 'mapbox-gl';
+import { fetchTrafficCurrent, congestionColor, type BackendLocation } from '@/services/backendApi';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
@@ -149,6 +150,46 @@ function statusColour(status: string): string {
 }
 
 // ── Popup HTML builder ────────────────────────────────────────────────────────
+
+function backendTrafficPopupHtml(loc: BackendLocation): string {
+  const col = congestionColor(loc.congestion_level);
+  const congStr = loc.congestion_level !== null ? `${loc.congestion_level.toFixed(0)}/100` : '—';
+  const speedStr = loc.avg_speed_kmh !== null ? `${loc.avg_speed_kmh.toFixed(1)} km/h` : '—';
+  const vehicleStr = loc.vehicle_count !== null ? loc.vehicle_count.toLocaleString('en-IN') : '—';
+  const tsStr = loc.timestamp
+    ? new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+  return `
+    <div style="
+      font-family: ui-monospace, 'Space Mono', monospace;
+      font-size: 11px; color: #f0f0f2; min-width: 180px;
+    ">
+      <div style="font-weight:600; color:${col}; margin-bottom:4px; font-size:12px;">
+        ${loc.name}
+      </div>
+      <div style="opacity:0.45; margin-bottom:10px; font-size:9px; letter-spacing:0.15em; text-transform:uppercase;">
+        Decision Engine · Backend
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px;">
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Congestion</div>
+          <div style="color:${col}; font-size:14px; font-weight:600;">${congStr}</div>
+        </div>
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Avg Speed</div>
+          <div style="color:#f0f0f2; font-size:13px; font-weight:500;">${speedStr}</div>
+        </div>
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Vehicles</div>
+          <div style="color:#f0f0f2; font-size:13px; font-weight:500;">${vehicleStr}</div>
+        </div>
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Updated</div>
+          <div style="color:#f0f0f2; font-size:11px; opacity:0.6;">${tsStr}</div>
+        </div>
+      </div>
+    </div>`;
+}
 
 function sensorPopupHtml(props: Record<string, unknown>): string {
   const typeLabel: Record<string, string> = {
@@ -444,6 +485,86 @@ export default function CityMap({ activeLayers }: CityMapProps) {
         },
       });
 
+      // ── Backend decision-engine traffic markers ────────────────────────────
+      // Coloured circles for each location tracked by the FastAPI backend.
+      // Falls back silently if the backend is offline.
+      map.addSource('src-backend-traffic', { type: 'geojson', data: EMPTY_FC });
+
+      const backendCongestionColor: ExpressionSpecification = [
+        'interpolate', ['linear'],
+        ['coalesce', ['get', 'congestion_level'], 0],
+        0,  '#00FF88',
+        35, '#FFCC00',
+        60, '#FF7722',
+        80, '#FF2222',
+      ];
+
+      // Outer glow
+      map.addLayer({
+        id: 'backend-traffic-glow', type: 'circle', source: 'src-backend-traffic',
+        paint: {
+          'circle-radius':  30,
+          'circle-color':   backendCongestionColor,
+          'circle-opacity': 0.13,
+          'circle-blur':    1.8,
+        },
+        layout: { visibility: 'visible' },
+      });
+
+      // Core dot
+      map.addLayer({
+        id: 'backend-traffic-dot', type: 'circle', source: 'src-backend-traffic',
+        paint: {
+          'circle-radius':       9,
+          'circle-color':        backendCongestionColor,
+          'circle-opacity':      0.92,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(255,255,255,0.25)',
+        },
+        layout: { visibility: 'visible' },
+      });
+
+      // Label (visible when zoomed in)
+      map.addLayer({
+        id: 'backend-traffic-label', type: 'symbol', source: 'src-backend-traffic',
+        minzoom: 11,
+        layout: {
+          'text-field': [
+            'concat',
+            ['get', 'name'],
+            '\n',
+            ['concat', ['to-string', ['round', ['coalesce', ['get', 'congestion_level'], 0]]], '/100'],
+          ] as ExpressionSpecification,
+          'text-size':   9,
+          'text-offset': [0, 1.6],
+          'text-anchor': 'top',
+          'text-font':   ['Open Sans Regular', 'Arial Unicode MS Regular'],
+          'text-max-width': 8,
+          visibility: 'visible',
+        },
+        paint: {
+          'text-color':      backendCongestionColor,
+          'text-halo-color': 'rgba(0,0,0,0.95)',
+          'text-halo-width': 2,
+        },
+      });
+
+      // Click popup for backend markers
+      map.on('click', 'backend-traffic-dot', e => {
+        if (!e.features?.[0]) return;
+        const props = e.features[0].properties as BackendLocation & { congestion_level: number };
+        const coord = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({
+          offset: 14, closeButton: true, maxWidth: '260px', className: 'syncity-popup',
+        })
+          .setLngLat(coord)
+          .setHTML(backendTrafficPopupHtml(props))
+          .addTo(map);
+      });
+      map.on('mouseenter', 'backend-traffic-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'backend-traffic-dot', () => { map.getCanvas().style.cursor = ''; });
+
       setLoaded(true);
 
       setTimeout(() => {
@@ -472,7 +593,7 @@ export default function CityMap({ activeLayers }: CityMapProps) {
       temperature: ['temperature-heat'],
       pollution:   ['pollution-heat'],
       sensors:     ['sensors-glow', 'sensors-dot', 'sensors-label'],
-      traffic:     ['traffic-congestion-glow', 'traffic-congestion-line'],
+      traffic:     ['traffic-congestion-glow', 'traffic-congestion-line', 'backend-traffic-glow', 'backend-traffic-dot', 'backend-traffic-label'],
     };
 
     for (const [id, visible] of Object.entries(activeLayers)) {
@@ -483,6 +604,43 @@ export default function CityMap({ activeLayers }: CityMapProps) {
       }
     }
   }, [activeLayers, loaded]);
+
+  // ── Poll backend for live location traffic every 30 s ────────────────────
+  useEffect(() => {
+    if (!loaded) return;
+
+    function toGeoJSON(locations: BackendLocation[]): GeoJSON.FeatureCollection {
+      return {
+        type: 'FeatureCollection',
+        features: locations
+          .filter(l => l.congestion_level !== null)
+          .map(l => ({
+            type:     'Feature',
+            geometry: { type: 'Point', coordinates: [l.lng, l.lat] },
+            properties: {
+              location_id:     l.location_id,
+              name:            l.name,
+              congestion_level: l.congestion_level,
+              vehicle_count:   l.vehicle_count,
+              avg_speed_kmh:   l.avg_speed_kmh,
+              aqi:             l.aqi,
+              timestamp:       l.timestamp,
+            },
+          })),
+      };
+    }
+
+    async function refresh() {
+      const locations = await fetchTrafficCurrent();
+      if (!mapRef.current || !locations.length) return;
+      const src = mapRef.current.getSource('src-backend-traffic') as mapboxgl.GeoJSONSource | undefined;
+      src?.setData(toGeoJSON(locations));
+    }
+
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
+  }, [loaded]);
 
   return (
     <div

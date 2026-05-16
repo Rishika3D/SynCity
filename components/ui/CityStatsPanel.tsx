@@ -15,6 +15,11 @@
 
 import { useEffect, useState } from 'react';
 import type { CityMetric, AlertItem } from '@/types/map';
+import {
+  fetchRecentDecisions, fetchDashboard,
+  decisionColor, relativeTime,
+  type BackendDecision,
+} from '@/services/backendApi';
 
 // ── Data sources ──────────────────────────────────────────────────────────────
 
@@ -160,11 +165,34 @@ function AlertBullet({ type }: { type: AlertItem['type'] }) {
 
 const PLACEHOLDER = buildMetrics(55, 72, '—', 45);
 
+// ── Decision action label shorthands ──────────────────────────────────────────
+
+const ACTION_LABELS: Record<string, string> = {
+  EMERGENCY_REROUTE:   '🚨 Emergency reroute',
+  REROUTE:             '↩ Reroute advised',
+  SIGNAL_ADJUST:       '🚦 Signal timing adjusted',
+  ENVIRONMENTAL_ALERT: '🌫 Environmental alert',
+  CONGESTION_WARNING:  '⚠ Congestion warning',
+};
+
 export default function CityStatsPanel() {
-  const [metrics, setMetrics] = useState<CityMetric[]>(PLACEHOLDER);
-  const [alerts,  setAlerts]  = useState<AlertItem[]>([]);
-  const [open,    setOpen]    = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [metrics,   setMetrics]   = useState<CityMetric[]>(PLACEHOLDER);
+  const [alerts,    setAlerts]    = useState<AlertItem[]>([]);
+  const [decisions, setDecisions] = useState<BackendDecision[]>([]);
+  const [backendUp, setBackendUp] = useState(false);
+  const [open,      setOpen]      = useState(true);
+  const [loading,   setLoading]   = useState(true);
+
+  async function refreshBackend() {
+    const [dash, decs] = await Promise.all([
+      fetchDashboard(),
+      fetchRecentDecisions(30),
+    ]);
+    if (dash || decs.length) {
+      setBackendUp(true);
+      setDecisions(decs.slice(0, 4));
+    }
+  }
 
   async function refreshAll() {
     try {
@@ -193,7 +221,14 @@ export default function CityStatsPanel() {
 
   useEffect(() => {
     refreshAll();
-    const id = setInterval(refreshAll, 5 * 60 * 1000); // refresh every 5 min
+    const id = setInterval(refreshAll, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    refreshBackend();
+    const id = setInterval(refreshBackend, 30_000); // sync with simulation tick
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -292,10 +327,58 @@ export default function CityStatsPanel() {
             ))}
           </div>
 
+          {/* Decision engine activity feed */}
+          {backendUp && (
+            <>
+              <div className="mx-3" style={{ height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+              <div className="p-3 flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: '#AA44FF', boxShadow: '0 0 4px #AA44FF' }}
+                  />
+                  <p className="font-mono text-[9px] text-white/22 tracking-[0.2em] uppercase">
+                    Decision Engine
+                  </p>
+                </div>
+                {decisions.length === 0 ? (
+                  <p className="font-mono text-[10px] text-white/20 px-2 py-1">
+                    No actions in last 30 min
+                  </p>
+                ) : decisions.map(d => (
+                  <div
+                    key={d.id}
+                    className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-white/[0.03] transition-colors duration-100"
+                  >
+                    <div
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[3px]"
+                      style={{
+                        background: decisionColor(d.action_type),
+                        boxShadow:  `0 0 5px ${decisionColor(d.action_type)}`,
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-mono text-[10px] text-white/52 leading-tight">
+                        {ACTION_LABELS[d.action_type] ?? d.action_type}
+                      </p>
+                      <p className="font-mono text-[9px] text-white/20 mt-0.5 truncate">
+                        {d.description ?? '—'}
+                      </p>
+                      <p className="font-mono text-[8px] text-white/18 mt-0.5">
+                        {relativeTime(d.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           {/* Data source note */}
           <div className="px-4 pb-3 mt-auto">
             <p className="font-mono text-[8px] text-white/15 leading-relaxed">
               Weather · WAQI/CPCB AQI · Mapbox traffic
+              {backendUp && ' · SynCity Backend'}
             </p>
           </div>
 
