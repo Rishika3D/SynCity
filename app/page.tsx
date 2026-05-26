@@ -1,227 +1,327 @@
-import dynamic from 'next/dynamic';
-import Link from 'next/link';
+'use client';
 
-// Three.js canvas — client only (no SSR)
-const HeroCanvas = dynamic(
-  () => import('@/components/hero/HeroCanvas'),
-  { ssr: false },
+/**
+ * SynCity — Landing page
+ *
+ * Entry sequence (LP5 Marseille-style):
+ *   1. Counter  00 → 100  (2.6 s, ease-in-out)
+ *   2. Morph    "100" → year  (0.8 s cross-dissolve)
+ *   3. Year     display hold  (1.2 s)
+ *   4. Headline reveal  "WHAT IF YOU…" + ENTER button
+ *   5. Overlay fades → Bangalore map flythrough begins
+ *
+ * Map page (LP5-style):
+ *   • Dark CartoDB aerial map of Bangalore, 54° pitch
+ *   • Cinematic drone flythrough on Enter
+ *   • SYNCITY › logo at top centre with category counts
+ *   • Hover POI dots → inline fact card
+ *   • Scroll down → Platform modules
+ */
+
+import dynamic   from 'next/dynamic';
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+/* ── Lazy load the heavy map (avoids SSR issues) ─────────────────────── */
+const BangaloreMap = dynamic(
+  () => import('@/components/map/BangaloreMap'),
+  { ssr: false, loading: () => <div style={{ height: '100vh', background: '#0d1826' }} /> },
 );
 
-// ─── Feature data ─────────────────────────────────────────────────────────────
 
-const FEATURES = [
-  {
-    num:    '01',
-    title:  'Urban Intelligence',
-    body:   "A living map of the city's neural systems — roads, power grids, water networks, and human movement — rendered as a navigable digital twin.",
-    detail: '4,200 IoT nodes · Real-time road network · 48-hour prediction horizon',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="14" stroke="rgba(245,245,247,0.2)" strokeWidth="0.8"/>
-        <circle cx="16" cy="16" r="8"  stroke="rgba(245,245,247,0.1)" strokeWidth="0.6" strokeDasharray="2 3"/>
-        <circle cx="16" cy="16" r="2.5" fill="rgba(245,245,247,0.3)"/>
-        <line x1="16" y1="2"  x2="16" y2="6"  stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-        <line x1="16" y1="26" x2="16" y2="30" stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-        <line x1="2"  y1="16" x2="6"  y2="16" stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-        <line x1="26" y1="16" x2="30" y2="16" stroke="rgba(245,245,247,0.25)" strokeWidth="0.8"/>
-      </svg>
-    ),
-  },
-  {
-    num:    '02',
-    title:  'AI Predictions',
-    body:   'Machine learning models trained on five years of city data forecast traffic surges, air quality shifts, and energy demand spikes twelve hours before they occur.',
-    detail: 'Traffic · Air Quality · Energy · Weather',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <polyline points="2,26 8,18 14,22 20,10 26,15 30,6" stroke="rgba(245,245,247,0.25)" strokeWidth="1.2" fill="none"/>
-        <polyline points="20,10 26,6 30,2" stroke="rgba(245,245,247,0.1)" strokeWidth="1" strokeDasharray="2 2" fill="none"/>
-        <circle cx="8"  cy="18" r="1.5" fill="rgba(245,245,247,0.3)"/>
-        <circle cx="14" cy="22" r="1.5" fill="rgba(245,245,247,0.3)"/>
-        <circle cx="20" cy="10" r="1.5" fill="rgba(245,245,247,0.3)"/>
-        <line x1="2" y1="28" x2="30" y2="28" stroke="rgba(245,245,247,0.1)" strokeWidth="0.6"/>
-        <line x1="2" y1="4"  x2="2"  y2="28" stroke="rgba(245,245,247,0.1)" strokeWidth="0.6"/>
-      </svg>
-    ),
-  },
-  {
-    num:    '03',
-    title:  'City Simulation',
-    body:   "Add a metro corridor, reroute arterial roads, or impose flood conditions — and watch the city's systems recalibrate in real time, revealing cascades of consequence.",
-    detail: 'Scenario modelling · Infrastructure stress-testing · Population flow',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <rect x="3"  y="16" width="7" height="12" fill="rgba(245,245,247,0.06)" stroke="rgba(245,245,247,0.2)" strokeWidth="0.7"/>
-        <rect x="13" y="10" width="7" height="18" fill="rgba(245,245,247,0.06)" stroke="rgba(245,245,247,0.2)" strokeWidth="0.7"/>
-        <rect x="23" y="4"  width="7" height="24" fill="rgba(245,245,247,0.06)" stroke="rgba(245,245,247,0.2)" strokeWidth="0.7"/>
-        <line x1="2"  y1="28" x2="30" y2="28" stroke="rgba(245,245,247,0.15)" strokeWidth="0.7"/>
-      </svg>
-    ),
-  },
-  {
-    num:    '04',
-    title:  'Infrastructure Monitoring',
-    body:   'Continuous surveillance of every water main, power substation, and road segment. Anomalies are flagged seconds after detection, before they escalate.',
-    detail: 'Power · Water · Roads · Fibre · Emergency Services',
-    symbol: (
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(245,245,247,0.15)" strokeWidth="0.8"/>
-        <path d="M 8 16 Q 12 6 16 16 Q 20 26 24 16" fill="none" stroke="rgba(245,245,247,0.3)" strokeWidth="1.2"/>
-        <circle cx="8"  cy="16" r="1.8" fill="rgba(245,245,247,0.25)"/>
-        <circle cx="24" cy="16" r="1.8" fill="rgba(245,245,247,0.25)"/>
-      </svg>
-    ),
-  },
-];
+/* ══════════════════════════════════════════════════════════════════════
+   INTRO OVERLAY — matches LP5 Marseille loading → year morph → headline
+   ══════════════════════════════════════════════════════════════════════ */
+type Phase = 'counting' | 'morphing' | 'yearHold' | 'reveal' | 'exit';
 
-// ─── Feature card ─────────────────────────────────────────────────────────────
+function IntroOverlay({ onDone }: { onDone: () => void }) {
+  const YEAR = new Date().getFullYear();          // auto-updates each year
+  const [count, setCount] = useState(0);
+  const [phase, setPhase] = useState<Phase>('counting');
+  const rafRef = useRef<number>(0);
 
-function FeatureCard({ f, idx }: { f: typeof FEATURES[0]; idx: number }) {
-  const isEven = idx % 2 === 0;
+  /* Prevent scroll while overlay is visible */
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  /* ── Counter 00 → 100 over 2.6 s (ease-in-out quad) ──────────────── */
+  useEffect(() => {
+    const DURATION = 2600;
+    const start    = performance.now();
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / DURATION);
+      const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      setCount(Math.floor(e * 100));
+
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        setCount(100);
+        /* Brief hold at 100 → morph to year */
+        setTimeout(() => setPhase('morphing'), 260);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  /* ── Morph → yearHold → reveal timing ────────────────────────────── */
+  useEffect(() => {
+    if (phase === 'morphing') {
+      const t = setTimeout(() => setPhase('yearHold'), 820);
+      return () => clearTimeout(t);
+    }
+    if (phase === 'yearHold') {
+      const t = setTimeout(() => setPhase('reveal'), 1300);
+      return () => clearTimeout(t);
+    }
+  }, [phase]);
+
+  const handleEnter = useCallback(() => {
+    setPhase('exit');
+    setTimeout(() => {
+      document.body.style.overflow = '';
+      onDone();
+    }, 860);
+  }, [onDone]);
+
+  /* ── Shared number style ──────────────────────────────────────────── */
+  const numStyle: React.CSSProperties = {
+    fontFamily   : 'var(--font-bebas), Impact, sans-serif',
+    fontSize     : 'clamp(9rem, 22vw, 26rem)',
+    fontWeight   : 400,
+    letterSpacing: '-0.02em',
+    lineHeight   : 0.88,
+    color        : 'rgba(255,255,255,0.92)',
+    userSelect   : 'none',
+  };
+
   return (
-    <div className={`flex flex-col sm:flex-row gap-7 sm:gap-20 items-start ${isEven ? '' : 'sm:flex-row-reverse'}`}>
-      {/* Icon + number */}
-      <div className="shrink-0 flex sm:flex-col items-center sm:items-center gap-4 pt-1">
-        <div className="w-14 h-14 flex items-center justify-center rounded-2xl"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          {f.symbol}
-        </div>
-        <span style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.3em', color: 'rgba(245,245,247,0.2)' }}>
-          {f.num}
-        </span>
-      </div>
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position      : 'fixed',
+        inset         : 0,
+        zIndex        : 1000,
+        background    : '#0d1826',
+        display       : 'flex',
+        flexDirection : 'column',
+        alignItems    : 'center',
+        justifyContent: 'center',
+        transition    : phase === 'exit' ? 'opacity 0.86s cubic-bezier(0.4,0,0.2,1)' : 'none',
+        opacity       : phase === 'exit' ? 0 : 1,
+        pointerEvents : phase === 'exit' ? 'none' : 'auto',
+      }}
+    >
+      <style>{`
+        /* Counter fade out — scales up + blurs + widens tracking */
+        @keyframes countOut {
+          0%   { opacity:1; transform:scale(1);    letter-spacing:-0.02em; filter:blur(0px);  }
+          100% { opacity:0; transform:scale(1.22); letter-spacing:0.18em;  filter:blur(14px); }
+        }
+        /* Year fades in from slightly smaller */
+        @keyframes yearIn {
+          0%   { opacity:0; transform:scale(0.80); filter:blur(10px); }
+          100% { opacity:1; transform:scale(1);    filter:blur(0px);  }
+        }
+        /* Scanline under counter */
+        @keyframes scan {
+          0%   { transform:scaleX(0); opacity:0.55; }
+          55%  { transform:scaleX(1); opacity:0.55; }
+          100% { transform:scaleX(1); opacity:0;    }
+        }
+        /* Headline slides up */
+        @keyframes slideUp {
+          from { opacity:0; transform:translateY(30px); }
+          to   { opacity:1; transform:translateY(0);    }
+        }
+        /* Year micro-label */
+        @keyframes yearLabel {
+          from { opacity:0; transform:translateY(10px); }
+          to   { opacity:1; transform:translateY(0);    }
+        }
+        /* Enter button */
+        @keyframes btnFade { from { opacity:0; } to { opacity:1; } }
+        @keyframes btnPulse {
+          0%,100% { border-color:rgba(255,255,255,0.28); }
+          50%     { border-color:rgba(255,255,255,0.62); }
+        }
+      `}</style>
 
-      {/* Text */}
-      <div className="flex-1 max-w-2xl">
-        <h3
-          style={{ fontFamily: 'var(--font-playfair)', fontWeight: 700, fontSize: 'clamp(1.4rem,2.5vw,2rem)', color: '#f5f5f7', lineHeight: 1.2, marginBottom: '1rem' }}
-        >
-          {f.title}
-        </h3>
-        <p style={{ fontFamily: 'var(--font-inter)', fontWeight: 300, fontSize: '1rem', lineHeight: 1.75, color: 'rgba(245,245,247,0.5)', marginBottom: '1.25rem' }}>
-          {f.body}
-        </p>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '10px', letterSpacing: '0.22em', color: 'rgba(245,245,247,0.22)', textTransform: 'uppercase' }}>
-          {f.detail}
-        </p>
-      </div>
+      {/* ── Phase: counting ────────────────────────────────────────────── */}
+      {phase === 'counting' && (
+        <div style={{ textAlign: 'center' }}>
+          <span style={numStyle}>
+            {String(count).padStart(2, '0')}
+          </span>
+          {/* Thin scanline progress indicator */}
+          <span style={{
+            display         : 'block',
+            height          : '1px',
+            background      : 'rgba(255,255,255,0.32)',
+            marginTop       : '16px',
+            transformOrigin : 'left center',
+            animation       : 'scan 2.6s linear both',
+          }} />
+        </div>
+      )}
+
+      {/* ── Phase: morphing — "100" dissolves into year ─────────────────── */}
+      {phase === 'morphing' && (
+        <div style={{ position: 'relative', height: 'clamp(9rem,22vw,26rem)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {/* "100" fading out */}
+          <span style={{ ...numStyle, position: 'absolute', animation: 'countOut 0.82s ease-in both' }}>
+            100
+          </span>
+          {/* Year fading in */}
+          <span style={{ ...numStyle, position: 'absolute', animation: 'yearIn 0.82s ease-out 0.12s both' }}>
+            {YEAR}
+          </span>
+        </div>
+      )}
+
+      {/* ── Phase: yearHold — stable year ──────────────────────────────── */}
+      {phase === 'yearHold' && (
+        <span style={numStyle}>{YEAR}</span>
+      )}
+
+      {/* ── Phase: reveal — headline + Enter ───────────────────────────── */}
+      {phase === 'reveal' && (
+        <div style={{
+          textAlign: 'center',
+          padding  : '0 clamp(28px, 6vw, 90px)',
+          maxWidth : '1100px',
+          width    : '100%',
+        }}>
+          {/* Year micro-label */}
+          <p style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : 'clamp(0.62rem, 0.9vw, 0.80rem)',
+            fontWeight   : 400,
+            letterSpacing: '0.58em',
+            textTransform: 'uppercase',
+            color        : 'rgba(255,255,255,0.30)',
+            margin       : '0 0 20px',
+            animation    : 'yearLabel 0.65s ease-out both',
+          }}>
+            {YEAR}
+          </p>
+
+          {/* Bangalore fact strip */}
+          <p style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : 'clamp(0.60rem, 0.88vw, 0.78rem)',
+            fontWeight   : 400,
+            letterSpacing: '0.38em',
+            textTransform: 'uppercase',
+            color        : 'rgba(212,168,122,0.55)',
+            margin       : '0 0 26px',
+            animation    : 'yearLabel 0.65s ease-out 0.12s both',
+          }}>
+            13.6M people · 741 km² · ₹110B GDP · 210+ lakes · 12,847 IoT sensors
+          </p>
+
+          {/* Headline — Bebas Neue, LP5 warm peach */}
+          <h1 style={{
+            fontFamily   : 'var(--font-bebas), Impact, sans-serif',
+            fontSize     : 'clamp(4.5rem, 12vw, 13rem)',
+            fontWeight   : 400,
+            letterSpacing: '0.02em',
+            lineHeight   : 0.88,
+            color        : '#D4A87A',
+            textTransform: 'uppercase',
+            margin       : '0 0 50px',
+            animation    : 'slideUp 0.88s ease-out 0.06s both',
+          }}>
+            Welcome to<br />Bangalore
+          </h1>
+
+          {/* ENTER — thin border button, LP5 style */}
+          <button
+            onClick={handleEnter}
+            style={{
+              fontFamily   : '"Inter", sans-serif',
+              fontSize     : 'clamp(9px, 1vw, 11px)',
+              fontWeight   : 500,
+              letterSpacing: '0.52em',
+              textTransform: 'uppercase',
+              color        : 'rgba(255,255,255,0.75)',
+              background   : 'transparent',
+              border       : '1px solid rgba(255,255,255,0.32)',
+              borderRadius : '2px',
+              padding      : '15px 42px',
+              cursor       : 'pointer',
+              animation    : 'btnFade 0.65s ease-out 0.55s both, btnPulse 2.8s ease-in-out 1.3s infinite',
+              transition   : 'background 0.2s, color 0.2s, border-color 0.2s',
+            }}
+            onMouseEnter={e => {
+              const b = e.currentTarget;
+              b.style.background  = 'rgba(255,255,255,0.07)';
+              b.style.color       = '#fff';
+              b.style.borderColor = 'rgba(255,255,255,0.65)';
+            }}
+            onMouseLeave={e => {
+              const b = e.currentTarget;
+              b.style.background  = 'transparent';
+              b.style.color       = 'rgba(255,255,255,0.75)';
+              b.style.borderColor = 'rgba(255,255,255,0.32)';
+            }}
+          >
+            Enter
+          </button>
+
+          {/* Coordinate hint */}
+          <p style={{
+            fontFamily   : '"Inter", sans-serif',
+            fontSize     : '9px',
+            fontWeight   : 300,
+            letterSpacing: '0.42em',
+            textTransform: 'uppercase',
+            color        : 'rgba(255,255,255,0.13)',
+            margin       : '30px 0 0',
+            animation    : 'btnFade 0.65s ease-out 0.90s both',
+          }}>
+            Bangalore · 12.97°N · 77.59°E
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════════════════════════════
+   HOME
+   ══════════════════════════════════════════════════════════════════════ */
+export default function Home() {
+  const [entered, setEntered] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
-export default function HomePage() {
+  useEffect(() => {
+    setHydrated(true);
+    if (sessionStorage.getItem('syncity_intro_done') === '1') {
+      setEntered(true);
+    }
+  }, []);
+
+  const handleDone = () => {
+    sessionStorage.setItem('syncity_intro_done', '1');
+    setEntered(true);
+  };
+
   return (
-    <main style={{ background: '#09090b' }}>
+    <main style={{ background: '#0d1826', color: '#fff' }}>
 
-      {/* ── Section 1: Hero canvas ─────────────────────────────────────── */}
-      <section className="relative h-screen">
-        <HeroCanvas />
-      </section>
+      {/* ── Intro overlay ─────────────────────────────────── */}
+      {hydrated && !entered && <IntroOverlay onDone={handleDone} />}
 
-      {/* ── Section 2: Features ────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-5 sm:px-12 py-16 sm:py-32">
-
-        {/* Header */}
-        <div className="mb-12 sm:mb-24">
-          <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.5em', color: 'rgba(245,245,247,0.3)', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
-            Platform
-          </p>
-          <h2 style={{ fontFamily: 'var(--font-playfair)', fontWeight: 800, fontSize: 'clamp(2rem,4vw,3.25rem)', color: '#f5f5f7', lineHeight: 1.15, maxWidth: '18ch' }}>
-            What the Platform Understands
-          </h2>
-        </div>
-
-        {/* Feature rows */}
-        <div className="flex flex-col gap-0">
-          {FEATURES.map((f, i) => (
-            <div key={f.num}>
-              <FeatureCard f={f} idx={i} />
-              {i < FEATURES.length - 1 && (
-                <div className="my-10 sm:my-16" style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Section 3: CTA ────────────────────────────────────────────── */}
-      <section className="relative py-20 sm:py-40 px-5 sm:px-6 text-center overflow-hidden">
-        {/* Subtle glow behind */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div style={{ width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%)' }} />
-        </div>
-
-        {/* Concentric rings — fewer on mobile */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          {[160, 280, 420, 580].map((r, i) => (
-            <div key={r} className={`absolute rounded-full ${i >= 2 ? 'hidden sm:block' : ''}`}
-              style={{ width: r, height: r, border: '1px solid rgba(255,255,255,0.04)' }} />
-          ))}
-        </div>
-
-        <div className="relative z-10">
-          <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.5em', color: 'rgba(245,245,247,0.3)', textTransform: 'uppercase', marginBottom: '1.5rem' }}>
-            Begin
-          </p>
-          <h2 style={{ fontFamily: 'var(--font-playfair)', fontWeight: 800, fontSize: 'clamp(2.2rem,5vw,4rem)', color: '#f5f5f7', lineHeight: 1.1, marginBottom: '1.25rem' }}>
-            The City Awaits Observation
-          </h2>
-          <p style={{ fontFamily: 'var(--font-inter)', fontWeight: 300, fontSize: '1rem', color: 'rgba(245,245,247,0.4)', maxWidth: '36ch', margin: '0 auto 3rem', lineHeight: 1.75 }}>
-            Step into the digital observatory. Monitor, predict, and shape the living intelligence of Bengaluru.
-          </p>
-
-          <Link
-            href="/explore"
-            className="inline-flex items-center gap-3 group"
-            style={{
-              fontFamily: 'var(--font-inter)',
-              fontSize: '11px',
-              letterSpacing: '0.3em',
-              textTransform: 'uppercase',
-              color: '#f5f5f7',
-              border: '1px solid rgba(255,255,255,0.15)',
-              padding: '14px 32px',
-              background: 'rgba(255,255,255,0.05)',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.3s',
-            }}
-          >
-            Enter City Intelligence
-            <span style={{ opacity: 0.4, transition: 'transform 0.3s' }} className="group-hover:translate-x-1">→</span>
-          </Link>
-
-          <div className="flex items-center justify-center gap-8 sm:gap-10 mt-8 sm:mt-10">
-            {[
-              { href: '/analytics',  label: 'Analytics' },
-              { href: '/simulation', label: 'Simulation' },
-            ].map(({ href, label }) => (
-              <Link key={href} href={href}
-                style={{ fontFamily: 'var(--font-inter)', fontSize: '10px', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.28)' }}
-                className="hover:text-white/60 transition-colors duration-300"
-              >
-                {label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Footer ────────────────────────────────────────────────────── */}
-      <footer className="px-6 sm:px-12 py-8 flex flex-col sm:flex-row items-center justify-between gap-4"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.4em', textTransform: 'uppercase', color: 'rgba(245,245,247,0.25)' }}>
-          SYNCITY
-        </p>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(245,245,247,0.15)' }}>
-          Urban Digital Twin · Bengaluru · 12.97°N 77.59°E
-        </p>
-        <p style={{ fontFamily: 'var(--font-inter)', fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(245,245,247,0.15)' }}>
-          2025
-        </p>
-      </footer>
+      {/* ── Bangalore map — full page hero with modules built in ── */}
+      <BangaloreMap started={entered} />
 
     </main>
   );
 }
+

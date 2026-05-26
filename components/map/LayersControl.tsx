@@ -188,6 +188,16 @@ export default function LayersControl({
         </div>
       )}
 
+      {/* Footer */}
+      {open && (
+        <div
+          className="px-4 py-2 flex items-center gap-1.5"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+        >
+          <span className="w-1 h-1 rounded-full bg-white/15" />
+          <span className="font-mono text-[9px] text-white/18 tracking-wider">
+            Bangalore · 14 districts
+          </span>
       {/* ── Directions ───────────────────────────────────────────────── */}
       <SectionHeader label="Directions" open={directionsOpen} onToggle={() => setDirectionsOpen(o => !o)} />
       {directionsOpen && (

@@ -5,6 +5,24 @@
  * CityMap — Mapbox GL JS 3D city engine.
  *
  * Features
+ *  ─ Dark Mapbox base map
+ *  ─ 3D building extrusions with depth-graded colour
+ *  ─ Cinematic fly-in from altitude to street level
+ *  ─ Temperature heatmap   (real Open-Meteo data, 14 district points)
+ *  ─ Air-quality heatmap   (real Open-Meteo air quality data, 14 district points)
+ *  ─ IoT sensor markers    (toggle)
+ *  ─ Traffic congestion    (real Mapbox traffic-v1 tileset)
+ *  ─ Custom dark popup on sensor click
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import type { LayerState, LayerId, SensorLocation } from '@/types/map';
+import type { ExpressionSpecification, LayerSpecification } from 'mapbox-gl';
+import { fetchTrafficCurrent, congestionColor, type BackendLocation } from '@/services/backendApi';
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
  *  ─ Premium Mapbox styles  (dark / satellite-streets / navigation-night)
  *  ─ 3D building extrusions from Mapbox composite source
  *  ─ Cinematic fly-in animation on load
@@ -34,6 +52,25 @@ mapboxgl.accessToken = TOKEN;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BANGALORE: [number, number] = [77.5946, 12.9716];
+const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
+
+// 14 Bangalore district sample coordinates for Open-Meteo fetches
+const DISTRICT_POINTS = [
+  { lat: 12.9342, lng: 77.6268 }, // Koramangala
+  { lat: 12.9762, lng: 77.6033 }, // MG Road
+  { lat: 12.9174, lng: 77.6226 }, // Silk Board
+  { lat: 12.9591, lng: 77.6974 }, // Marathahalli
+  { lat: 12.8458, lng: 77.6603 }, // Electronic City
+  { lat: 13.0250, lng: 77.5500 }, // Yeshwanthpur
+  { lat: 12.9250, lng: 77.5938 }, // Jayanagar
+  { lat: 12.9716, lng: 77.5946 }, // City Centre
+  { lat: 12.9010, lng: 77.6855 }, // Sarjapur
+  { lat: 13.0358, lng: 77.5972 }, // Hebbal
+  { lat: 13.1007, lng: 77.5963 }, // Yelahanka
+  { lat: 12.9784, lng: 77.6408 }, // Indiranagar
+  { lat: 12.9166, lng: 77.6101 }, // BTM Layout
+  { lat: 12.9254, lng: 77.5468 }, // Banashankari
+];
 
 // ── Sensor data ───────────────────────────────────────────────────────────────
 const SENSORS: SensorLocation[] = [
@@ -57,6 +94,78 @@ const SENSORS: SensorLocation[] = [
   { id: 's18', name: 'Sarjapur Rd',     lat: 12.9010, lng: 77.6855, type: 'air',     value: 110, status: 'online'  },
 ];
 
+// ── Real data fetchers (Open-Meteo, free, no key) ─────────────────────────────
+
+async function fetchTemperatureHeatmap(): Promise<GeoJSON.FeatureCollection> {
+  const results = await Promise.all(
+    DISTRICT_POINTS.map(d =>
+      fetch(
+        `https://api.open-meteo.com/v1/forecast` +
+        `?latitude=${d.lat}&longitude=${d.lng}` +
+        `&current=temperature_2m&timezone=Asia%2FKolkata`,
+      )
+        .then(r => r.json())
+        .then(j => ({ ...d, temp: j.current?.temperature_2m as number ?? 32 }))
+        .catch(() => ({ ...d, temp: 32 })),
+    ),
+  );
+
+  const temps = results.map(r => r.temp);
+  const min   = Math.min(...temps);
+  const max   = Math.max(...temps);
+  const range = max - min || 1;
+
+  return {
+    type: 'FeatureCollection',
+    features: results.map(r => ({
+      type:     'Feature',
+      geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
+      properties: {
+        temperature: r.temp,
+        weight:      (r.temp - min) / range,  // 0–1 normalised
+      },
+    })),
+  };
+}
+
+async function fetchAqiHeatmap(): Promise<GeoJSON.FeatureCollection> {
+  // /api/waqi fetches real CPCB ground-station AQI from WAQI for 10 Bangalore stations.
+  const res = await fetch('/api/waqi');
+  if (!res.ok) throw new Error('WAQI proxy error');
+
+  const json     = await res.json();
+  const stations = json.stations as Array<{ lat: number; lng: number; name: string; aqi: number }>;
+
+  if (!stations?.length) throw new Error('No WAQI stations');
+
+  const values = stations.map(s => s.aqi);
+  const min    = Math.min(...values);
+  const max    = Math.max(...values);
+  const range  = max - min || 1;
+
+  return {
+    type: 'FeatureCollection',
+    features: stations.map(s => ({
+      type:     'Feature',
+      geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+      properties: { aqi: s.aqi, name: s.name, weight: (s.aqi - min) / range },
+    })),
+  };
+}
+
+
+// ── Empty GeoJSON placeholder (used while real data loads) ────────────────────
+
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+
+// ── Helper — first symbol layer id ───────────────────────────────────────────
+
+function firstSymbolLayer(map: mapboxgl.Map): string | undefined {
+  for (const layer of map.getStyle().layers ?? []) {
+    if (layer.type === 'symbol') return layer.id;
+  }
+  return undefined;
+}
 const TRAFFIC_ROUTES: { name: string; intensity: number; coords: [number, number][] }[] = [
   { name: 'Outer Ring Road', intensity: 0.90, coords: [[77.6015,12.9343],[77.6174,12.9277],[77.6358,12.9284],[77.6504,12.9338],[77.6614,12.9447],[77.6698,12.9591],[77.6749,12.9698],[77.6719,12.9838],[77.6604,12.9968],[77.6442,13.0077]] },
   { name: 'Whitefield Rd',   intensity: 0.70, coords: [[77.6033,12.9762],[77.6199,12.9727],[77.6389,12.9699],[77.6622,12.9698],[77.6812,12.9700],[77.7099,12.9699],[77.7499,12.9698]] },
@@ -249,6 +358,49 @@ export default function CityMap({ activeLayers, mapStyle, searchResult, directio
       paint:  { 'text-color': '#00EEFF', 'text-halo-color': 'rgba(0,0,0,0.95)', 'text-halo-width': 2 },
     });
 
+function backendTrafficPopupHtml(loc: BackendLocation): string {
+  const col = congestionColor(loc.congestion_level);
+  const congStr = loc.congestion_level !== null ? `${loc.congestion_level.toFixed(0)}/100` : '—';
+  const speedStr = loc.avg_speed_kmh !== null ? `${loc.avg_speed_kmh.toFixed(1)} km/h` : '—';
+  const vehicleStr = loc.vehicle_count !== null ? loc.vehicle_count.toLocaleString('en-IN') : '—';
+  const tsStr = loc.timestamp
+    ? new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+  return `
+    <div style="
+      font-family: ui-monospace, 'Space Mono', monospace;
+      font-size: 11px; color: #f0f0f2; min-width: 180px;
+    ">
+      <div style="font-weight:600; color:${col}; margin-bottom:4px; font-size:12px;">
+        ${loc.name}
+      </div>
+      <div style="opacity:0.45; margin-bottom:10px; font-size:9px; letter-spacing:0.15em; text-transform:uppercase;">
+        Decision Engine · Backend
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px;">
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Congestion</div>
+          <div style="color:${col}; font-size:14px; font-weight:600;">${congStr}</div>
+        </div>
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Avg Speed</div>
+          <div style="color:#f0f0f2; font-size:13px; font-weight:500;">${speedStr}</div>
+        </div>
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Vehicles</div>
+          <div style="color:#f0f0f2; font-size:13px; font-weight:500;">${vehicleStr}</div>
+        </div>
+        <div>
+          <div style="opacity:0.4; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:2px;">Updated</div>
+          <div style="color:#f0f0f2; font-size:11px; opacity:0.6;">${tsStr}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function sensorPopupHtml(props: Record<string, unknown>): string {
+  const typeLabel: Record<string, string> = {
+    traffic: '🚦 Traffic', air: '🌬 Air Quality', smart: '📡 Smart', water: '💧 Water',
     // ── Traffic flow ────────────────────────────────────────────────────────
     const lineCol = ['interpolate', ['linear'], ['get', 'intensity'], 0, '#00EEFF', 0.5, '#00FF88', 0.8, '#FF7722', 1, '#FF3300'] as mapboxgl.Expression;
     map.addSource('src-traffic', { type: 'geojson', data: TRAFFIC_FC });
@@ -303,6 +455,19 @@ export default function CityMap({ activeLayers, mapStyle, searchResult, directio
     }
   };
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
+interface CityMapProps {
+  activeLayers: LayerState;
+}
+
+export default function CityMap({ activeLayers }: CityMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const popupRef     = useRef<mapboxgl.Popup | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  // ── Initialise map (once) ──────────────────────────────────────────────────
   // ── Init map once ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -312,6 +477,24 @@ export default function CityMap({ activeLayers, mapStyle, searchResult, directio
     }
 
     const map = new mapboxgl.Map({
+      container:    containerRef.current,
+      style:        MAP_STYLE,
+      center:       BANGALORE,
+      zoom:         9,
+      pitch:        20,
+      bearing:      0,
+      antialias:    true,
+      attributionControl: false,
+    });
+
+    map.addControl(
+      new mapboxgl.AttributionControl({ compact: true }),
+      'bottom-left',
+    );
+    map.addControl(
+      new mapboxgl.NavigationControl({ visualizePitch: true }),
+      'bottom-right',
+    );
       container:  containerRef.current,
       style:      MAPBOX_STYLES.dark,
       center:     BANGALORE,
@@ -347,6 +530,319 @@ export default function CityMap({ activeLayers, mapStyle, searchResult, directio
         map.on('mouseenter', 'sensors-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', 'sensors-dot', () => { map.getCanvas().style.cursor = ''; });
 
+    map.on('load', () => {
+      const beforeId = firstSymbolLayer(map);
+
+      // ── 3D buildings ───────────────────────────────────────────────────────
+      try {
+        const heightExpr: ExpressionSpecification = [
+          'interpolate', ['linear'], ['zoom'],
+          13,   0,
+          13.5, ['coalesce', ['get', 'height'], 12],
+        ];
+        const baseExpr: ExpressionSpecification = [
+          'interpolate', ['linear'], ['zoom'],
+          13,   0,
+          13.5, ['coalesce', ['get', 'min_height'], 0],
+        ];
+        const colourExpr: ExpressionSpecification = [
+          'interpolate', ['linear'],
+          ['coalesce', ['get', 'height'], 0],
+          0,   '#fdf3c0',
+          20,  '#f9e87a',
+          60,  '#f5d84a',
+          150, '#e8c62a',
+        ];
+
+        const buildingLayer: LayerSpecification = {
+          id:             '3d-buildings',
+          source:         'composite',
+          'source-layer': 'building',
+          filter:         ['==', 'extrude', 'true'],
+          type:           'fill-extrusion',
+          minzoom:        13,
+          paint: {
+            'fill-extrusion-color':   colourExpr,
+            'fill-extrusion-height':  heightExpr,
+            'fill-extrusion-base':    baseExpr,
+            'fill-extrusion-opacity': [
+              'interpolate', ['linear'], ['zoom'],
+              13, 0, 14, 0.90,
+            ] as ExpressionSpecification,
+          },
+        };
+
+        map.addLayer(buildingLayer, beforeId);
+      } catch (err) {
+        console.warn('[CityMap] 3D buildings unavailable:', err);
+      }
+
+      // ── Temperature heatmap (starts empty, fills from Open-Meteo) ─────────
+      map.addSource('src-temperature', { type: 'geojson', data: EMPTY_FC });
+      map.addLayer({
+        id:     'temperature-heat',
+        type:   'heatmap',
+        source: 'src-temperature',
+        paint:  {
+          'heatmap-weight':     ['interpolate', ['linear'], ['get', 'weight'], 0, 0.2, 1, 1] as ExpressionSpecification,
+          'heatmap-intensity':  ['interpolate', ['linear'], ['zoom'], 9, 1.5, 14, 4] as ExpressionSpecification,
+          'heatmap-radius':     ['interpolate', ['linear'], ['zoom'], 9, 80, 14, 160] as ExpressionSpecification,
+          'heatmap-opacity':    0.78,
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0,    'rgba(0,0,0,0)',
+            0.15, 'rgba(0,100,220,0)',
+            0.35, 'rgba(0,220,255,0.45)',
+            0.55, 'rgba(0,255,180,0.65)',
+            0.75, 'rgba(255,200,0,0.75)',
+            0.90, 'rgba(255,80,0,0.85)',
+            1,    'rgba(255,0,0,0.92)',
+          ] as ExpressionSpecification,
+        },
+        layout: { visibility: 'none' },
+      });
+
+      // ── Air-quality heatmap (starts empty, fills from Open-Meteo) ─────────
+      map.addSource('src-pollution', { type: 'geojson', data: EMPTY_FC });
+      map.addLayer({
+        id:     'pollution-heat',
+        type:   'heatmap',
+        source: 'src-pollution',
+        paint: {
+          'heatmap-weight':    ['interpolate', ['linear'], ['get', 'weight'], 0, 0.2, 1, 1] as ExpressionSpecification,
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 14, 3.5] as ExpressionSpecification,
+          'heatmap-radius':    ['interpolate', ['linear'], ['zoom'], 9, 85, 14, 170] as ExpressionSpecification,
+          'heatmap-opacity':   0.72,
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0,   'rgba(0,0,0,0)',
+            0.2, 'rgba(0,200,50,0)',
+            0.4, 'rgba(100,200,0,0.45)',
+            0.6, 'rgba(220,200,0,0.65)',
+            0.8, 'rgba(220,100,0,0.78)',
+            1,   'rgba(190,20,0,0.92)',
+          ] as ExpressionSpecification,
+        },
+        layout: { visibility: 'none' },
+      });
+
+      // ── Fetch real data and populate heatmaps ─────────────────────────────
+      const alive = { current: true };
+      Promise.all([fetchTemperatureHeatmap(), fetchAqiHeatmap()]).then(([tempFC, aqiFC]) => {
+        if (!alive.current || !mapRef.current) return;
+        (map.getSource('src-temperature') as mapboxgl.GeoJSONSource)?.setData(tempFC);
+        (map.getSource('src-pollution')   as mapboxgl.GeoJSONSource)?.setData(aqiFC);
+      }).catch(err => console.warn('[CityMap] Heatmap fetch failed:', err));
+
+      // ── Sensors ────────────────────────────────────────────────────────────
+      const sensorFC: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: SENSORS.map(s => ({
+          type:     'Feature',
+          geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+          properties: { id: s.id, name: s.name, type: s.type, value: s.value, status: s.status },
+        })),
+      };
+      map.addSource('src-sensors', { type: 'geojson', data: sensorFC });
+
+      const statusColorExpr: ExpressionSpecification = [
+        'match', ['get', 'status'],
+        'warning', '#FF7722',
+        'offline',  '#FF4444',
+        '#00EEFF',
+      ];
+
+      map.addLayer({
+        id: 'sensors-glow', type: 'circle', source: 'src-sensors',
+        paint: {
+          'circle-radius':  20,
+          'circle-color':   statusColorExpr,
+          'circle-opacity': 0.12,
+          'circle-blur':    1.2,
+        },
+        layout: { visibility: 'visible' },
+      });
+
+      map.addLayer({
+        id: 'sensors-dot', type: 'circle', source: 'src-sensors',
+        paint: {
+          'circle-radius':        6,
+          'circle-color':         statusColorExpr,
+          'circle-opacity':       0.92,
+          'circle-stroke-width':  1.5,
+          'circle-stroke-color':  'rgba(255,255,255,0.25)',
+        },
+        layout: { visibility: 'visible' },
+      });
+
+      map.addLayer({
+        id: 'sensors-label', type: 'symbol', source: 'src-sensors',
+        minzoom: 12,
+        layout: {
+          'text-field':   ['get', 'name'] as ExpressionSpecification,
+          'text-size':    10,
+          'text-offset':  [0, 1.3],
+          'text-anchor':  'top',
+          'text-font':    ['Open Sans Regular', 'Arial Unicode MS Regular'],
+          visibility:     'visible',
+        },
+        paint: {
+          'text-color':       '#00EEFF',
+          'text-halo-color':  'rgba(0,0,0,0.95)',
+          'text-halo-width':  2,
+        },
+      });
+
+      map.on('click', 'sensors-dot', e => {
+        if (!e.features?.[0]) return;
+        const props = e.features[0].properties as Record<string, unknown>;
+        const coord = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({
+          offset: 12, closeButton: true, maxWidth: '240px', className: 'syncity-popup',
+        })
+          .setLngLat(coord)
+          .setHTML(sensorPopupHtml(props))
+          .addTo(map);
+      });
+      map.on('mouseenter', 'sensors-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'sensors-dot', () => { map.getCanvas().style.cursor = ''; });
+
+      // ── Traffic congestion — real Mapbox traffic-v1 tileset ───────────────
+      // Congestion values: 'low' | 'moderate' | 'heavy' | 'severe'
+      map.addSource('mapbox-traffic', {
+        type: 'vector',
+        url:  'mapbox://mapbox.mapbox-traffic-v1',
+      });
+
+      const congestionColor: ExpressionSpecification = [
+        'match', ['get', 'congestion'],
+        'low',      '#00FF88',
+        'moderate', '#FFCC00',
+        'heavy',    '#FF7722',
+        'severe',   '#FF2222',
+        'rgba(0,238,255,0.3)',
+      ];
+
+      // Wide blur glow for heat-like feel
+      map.addLayer({
+        id:     'traffic-congestion-glow',
+        type:   'line',
+        source: 'mapbox-traffic',
+        'source-layer': 'traffic',
+        layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'visible' },
+        paint: {
+          'line-color':   congestionColor,
+          'line-width':   ['interpolate', ['linear'], ['zoom'], 9, 6, 14, 18] as ExpressionSpecification,
+          'line-blur':    5,
+          'line-opacity': 0.22,
+        },
+      });
+
+      // Core congestion line
+      map.addLayer({
+        id:     'traffic-congestion-line',
+        type:   'line',
+        source: 'mapbox-traffic',
+        'source-layer': 'traffic',
+        layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'visible' },
+        paint: {
+          'line-color':   congestionColor,
+          'line-width':   ['interpolate', ['linear'], ['zoom'], 9, 1.5, 14, 4] as ExpressionSpecification,
+          'line-opacity': 0.88,
+        },
+      });
+
+      // ── Backend decision-engine traffic markers ────────────────────────────
+      // Coloured circles for each location tracked by the FastAPI backend.
+      // Falls back silently if the backend is offline.
+      map.addSource('src-backend-traffic', { type: 'geojson', data: EMPTY_FC });
+
+      const backendCongestionColor: ExpressionSpecification = [
+        'interpolate', ['linear'],
+        ['coalesce', ['get', 'congestion_level'], 0],
+        0,  '#00FF88',
+        35, '#FFCC00',
+        60, '#FF7722',
+        80, '#FF2222',
+      ];
+
+      // Outer glow
+      map.addLayer({
+        id: 'backend-traffic-glow', type: 'circle', source: 'src-backend-traffic',
+        paint: {
+          'circle-radius':  30,
+          'circle-color':   backendCongestionColor,
+          'circle-opacity': 0.13,
+          'circle-blur':    1.8,
+        },
+        layout: { visibility: 'visible' },
+      });
+
+      // Core dot
+      map.addLayer({
+        id: 'backend-traffic-dot', type: 'circle', source: 'src-backend-traffic',
+        paint: {
+          'circle-radius':       9,
+          'circle-color':        backendCongestionColor,
+          'circle-opacity':      0.92,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(255,255,255,0.25)',
+        },
+        layout: { visibility: 'visible' },
+      });
+
+      // Label (visible when zoomed in)
+      map.addLayer({
+        id: 'backend-traffic-label', type: 'symbol', source: 'src-backend-traffic',
+        minzoom: 11,
+        layout: {
+          'text-field': [
+            'concat',
+            ['get', 'name'],
+            '\n',
+            ['concat', ['to-string', ['round', ['coalesce', ['get', 'congestion_level'], 0]]], '/100'],
+          ] as ExpressionSpecification,
+          'text-size':   9,
+          'text-offset': [0, 1.6],
+          'text-anchor': 'top',
+          'text-font':   ['Open Sans Regular', 'Arial Unicode MS Regular'],
+          'text-max-width': 8,
+          visibility: 'visible',
+        },
+        paint: {
+          'text-color':      backendCongestionColor,
+          'text-halo-color': 'rgba(0,0,0,0.95)',
+          'text-halo-width': 2,
+        },
+      });
+
+      // Click popup for backend markers
+      map.on('click', 'backend-traffic-dot', e => {
+        if (!e.features?.[0]) return;
+        const props = e.features[0].properties as BackendLocation & { congestion_level: number };
+        const coord = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({
+          offset: 14, closeButton: true, maxWidth: '260px', className: 'syncity-popup',
+        })
+          .setLngLat(coord)
+          .setHTML(backendTrafficPopupHtml(props))
+          .addTo(map);
+      });
+      map.on('mouseenter', 'backend-traffic-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'backend-traffic-dot', () => { map.getCanvas().style.cursor = ''; });
+
+      setLoaded(true);
+
+      setTimeout(() => {
+        map.flyTo({
+          center: BANGALORE, zoom: 13.5, pitch: 62, bearing: 22,
+          duration: 4800, essential: true, curve: 1.5,
+        });
+      }, 700);
+
+      return () => { alive.current = false; };
         // Fly-in
         setTimeout(() => {
           map.flyTo({ center: BANGALORE, zoom: 13.5, pitch: 62, bearing: 22, duration: 4800, essential: true, curve: 1.5 });
@@ -362,6 +858,7 @@ export default function CityMap({ activeLayers, mapStyle, searchResult, directio
       map.remove();
       mapRef.current = null;
     };
+  }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -380,6 +877,69 @@ export default function CityMap({ activeLayers, mapStyle, searchResult, directio
 
   // ── Geocoded search result: fly + drop marker ─────────────────────────────
   useEffect(() => {
+    if (!mapRef.current || !loaded) return;
+    const map = mapRef.current;
+
+    const layerGroups: Record<LayerId, string[]> = {
+      temperature: ['temperature-heat'],
+      pollution:   ['pollution-heat'],
+      sensors:     ['sensors-glow', 'sensors-dot', 'sensors-label'],
+      traffic:     ['traffic-congestion-glow', 'traffic-congestion-line', 'backend-traffic-glow', 'backend-traffic-dot', 'backend-traffic-label'],
+    };
+
+    for (const [id, visible] of Object.entries(activeLayers)) {
+      for (const layerId of layerGroups[id as LayerId] ?? []) {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+        }
+      }
+    }
+  }, [activeLayers, loaded]);
+
+  // ── Poll backend for live location traffic every 30 s ────────────────────
+  useEffect(() => {
+    if (!loaded) return;
+
+    function toGeoJSON(locations: BackendLocation[]): GeoJSON.FeatureCollection {
+      return {
+        type: 'FeatureCollection',
+        features: locations
+          .filter(l => l.congestion_level !== null)
+          .map(l => ({
+            type:     'Feature',
+            geometry: { type: 'Point', coordinates: [l.lng, l.lat] },
+            properties: {
+              location_id:     l.location_id,
+              name:            l.name,
+              congestion_level: l.congestion_level,
+              vehicle_count:   l.vehicle_count,
+              avg_speed_kmh:   l.avg_speed_kmh,
+              aqi:             l.aqi,
+              timestamp:       l.timestamp,
+            },
+          })),
+      };
+    }
+
+    async function refresh() {
+      const locations = await fetchTrafficCurrent();
+      if (!mapRef.current || !locations.length) return;
+      const src = mapRef.current.getSource('src-backend-traffic') as mapboxgl.GeoJSONSource | undefined;
+      src?.setData(toGeoJSON(locations));
+    }
+
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
+  }, [loaded]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full"
+      style={{ background: '#09090b' }}
+    />
+  );
     if (!mapRef.current || !searchResult) return;
     markerRef.current?.remove();
 

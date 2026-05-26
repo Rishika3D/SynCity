@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'VictoryStrikerSans';
+  src: url('/fonts/victory-striker-sans.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* MapLibre GL base styles */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
 /* ─── Obsidian Design Tokens ─────────────────────────────────────────── */
 :root {
   /* Backgrounds */
@@ -37,8 +48,8 @@ html, body {
   padding: 0;
   width: 100%;
   min-height: 100%;
-  overflow-x: hidden;
-  background-color: var(--obsidian);
+  overflow-x: clip;   /* clip ≠ hidden — doesn't break position:sticky */
+  background-color: #060B18;   /* deep navy — matches cloud scene start */
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Bebas_Neue, Cormorant_Garamond, Playfair_Display, Cinzel, Inter } from 'next/font/google';
+import { Bebas_Neue, Cormorant_Garamond, Playfair_Display, Cinzel, Inter, Space_Mono, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
 /**
@@ -46,6 +46,20 @@ const inter = Inter({
   display: 'swap',
 });
 
+const spaceMono = Space_Mono({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-space-mono',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-jetbrains',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'SYNCITY — Urban Intelligence Platform',
   description:
@@ -56,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${bebas.variable} ${cormorant.variable} ${playfair.variable} ${cinzel.variable} ${inter.variable}`}
+      className={`${bebas.variable} ${cormorant.variable} ${playfair.variable} ${cinzel.variable} ${inter.variable} ${spaceMono.variable} ${jetbrainsMono.variable}`}
     >
       <head>
         {/* Pre-establish connections to Google Maps servers so the first
