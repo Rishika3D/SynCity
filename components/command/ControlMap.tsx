@@ -46,9 +46,9 @@ function junctionPopupHtml(name: string, congestion: number): string {
   const statusColor = congestion >= 80 ? '#FF3B30' : congestion >= 55 ? '#FF9500' : '#30D158';
   const phase = congestion >= 80 ? 'Extended green on relief road' : congestion >= 55 ? 'Standard adaptive cycle' : 'Normal timing';
   return `
-    <div style="font-family:'Space Mono',monospace;font-size:11px;color:#e2e8f0;
+    <div style="font-family:var(--font-jetbrains);font-size:11px;color:#e2e8f0;
                 background:#080C14;padding:10px 12px;border:1px solid rgba(0,238,255,0.20);
-                border-radius:3px;min-width:180px">
+                border-radius:3px;min-width:180px;">
       <div style="color:#00EEFF;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;margin-bottom:8px">
         ⬡ ${name}
       </div>
@@ -353,7 +353,7 @@ export default function ControlMap({ locations, incidents }: ControlMapProps) {
       {/* Corner watermark */}
       <div style={{
         position: 'absolute', bottom: 8, left: 10, pointerEvents: 'none',
-        fontFamily: "'Space Mono', monospace", fontSize: '9px',
+        fontFamily: "var(--font-jetbrains)", fontSize: '9px',
         color: 'rgba(0,238,255,0.25)', letterSpacing: '0.2em', textTransform: 'uppercase',
       }}>
         Mapbox · Real-time Traffic · Bangalore
@@ -365,7 +365,7 @@ export default function ControlMap({ locations, incidents }: ControlMapProps) {
         background: 'rgba(8,12,20,0.85)', backdropFilter: 'blur(12px)',
         border: '1px solid rgba(0,238,255,0.10)', borderRadius: '3px',
         padding: '8px 10px',
-        fontFamily: "'Space Mono', monospace", fontSize: '9px',
+        fontFamily: "var(--font-jetbrains)", fontSize: '9px',
         color: 'rgba(255,255,255,0.45)', display: 'flex', flexDirection: 'column', gap: '4px',
         letterSpacing: '0.12em', textTransform: 'uppercase',
       }}>

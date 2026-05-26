@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'VictoryStrikerSans';
+  src: url('/fonts/victory-striker-sans.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* MapLibre GL base styles */
 @import 'maplibre-gl/dist/maplibre-gl.css';
 

@@ -71,7 +71,7 @@ const C = {
   text60:      'rgba(255,255,255,0.60)',
   text35:      'rgba(255,255,255,0.35)',
   text15:      'rgba(255,255,255,0.15)',
-  mono:        "'Space Mono', 'Courier New', monospace",
+  mono:        "var(--font-jetbrains)",
 };
 
 // ── Congestion → colour ────────────────────────────────────────────────────────
