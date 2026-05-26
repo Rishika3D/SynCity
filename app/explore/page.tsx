@@ -2,24 +2,32 @@
 'use client';
 
 /**
- * SynCity — Explore City Page
- * Fullscreen 3D digital-twin map for Bangalore, India.
+ * SynCity — Explore City Page (Mapbox Edition)
  *
- * Stack:  MapLibre GL JS · Open-Meteo · TypeScript · Tailwind CSS
- * Layout:
- *   z:0  ── Fullscreen MapLibre 3D map
- *   z:20 ── Floating header, layer panel, stats/weather panel, status bar
+ * Stack:
+ *   Mapbox GL JS  (3D map, satellite, geocoding, directions)
+ *   Open-Meteo   (live weather)
+ *   RainViewer   (live weather radar tiles, free)
+ *   TypeScript · Tailwind CSS
+ *
+ * Requires:  NEXT_PUBLIC_MAPBOX_TOKEN  in .env.local
  */
 
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
+import SearchBar    from '@/components/map/SearchBar';
 import LayersControl from '@/components/map/LayersControl';
 import CityStatsPanel from '@/components/ui/CityStatsPanel';
 import WeatherCard from '@/components/ui/WeatherCard';
 import AqiBreakdownCard from '@/components/ui/AqiBreakdownCard';
 import type { LayerId, LayerState } from '@/types/map';
+import WeatherCard    from '@/components/ui/WeatherCard';
+import type {
+  LayerId, LayerState, MapStyle,
+  GeocoderResult, DirectionsRequest,
+} from '@/types/map';
 
-// ── Dynamic import — MapLibre GL JS is browser-only ──────────────────────────
+// ── Dynamic import — Mapbox GL JS must only run in the browser ────────────────
 const CityMap = dynamic(() => import('@/components/map/CityMap'), {
   ssr: false,
   loading: () => (
@@ -29,27 +37,32 @@ const CityMap = dynamic(() => import('@/components/map/CityMap'), {
         <div className="w-16 h-16 rounded-full border-2 border-[#00EEFF]/60 border-t-transparent animate-spin" />
       </div>
       <p className="font-mono text-[#00EEFF]/70 text-[11px] tracking-[0.35em] uppercase">
-        Initialising City Grid
+        Initialising Bangalore Grid
       </p>
       <p className="font-mono text-white/20 text-[10px] tracking-widest mt-2">
-        12.9716°N · 77.5946°E · Bangalore
+        12.9716°N · 77.5946°E
       </p>
     </div>
   ),
 });
 
-// ── Initial layer visibility ──────────────────────────────────────────────────
+// ── Initial state ─────────────────────────────────────────────────────────────
 const INITIAL_LAYERS: LayerState = {
   temperature: false,
   pollution:   false,
   sensors:     true,
   traffic:     true,
+  weather:     false,
 };
 
-// ── Page component ────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function ExplorePage() {
   const [activeLayers, setActiveLayers] = useState<LayerState>(INITIAL_LAYERS);
   const [rightOpen,    setRightOpen]    = useState(true);
+  const [activeLayers,      setActiveLayers]      = useState<LayerState>(INITIAL_LAYERS);
+  const [mapStyle,          setMapStyle]           = useState<MapStyle>('dark');
+  const [searchResult,      setSearchResult]       = useState<GeocoderResult | null>(null);
+  const [directionsRequest, setDirectionsRequest]  = useState<DirectionsRequest | null>(null);
 
   const handleToggle = (id: LayerId) =>
     setActiveLayers(prev => ({ ...prev, [id]: !prev[id] }));
@@ -59,60 +72,65 @@ export default function ExplorePage() {
 
       {/* ── Fullscreen map ─────────────────────────────────────────── */}
       <div className="absolute inset-0 z-0">
-        <CityMap activeLayers={activeLayers} />
+        <CityMap
+          activeLayers={activeLayers}
+          mapStyle={mapStyle}
+          searchResult={searchResult}
+          directionsRequest={directionsRequest}
+        />
       </div>
 
-      {/* ── Top gradient vignette + header ─────────────────────────── */}
+      {/* ── Top gradient + header ───────────────────────────────────── */}
       <header
         className="absolute top-0 inset-x-0 z-20 pointer-events-none
-                   flex items-center justify-between px-6 pt-4 pb-16"
-        style={{
-          background: 'linear-gradient(to bottom, rgba(9,9,11,0.90) 0%, transparent 100%)',
-        }}
+                   flex items-center gap-4 px-5 pt-4 pb-14"
+        style={{ background: 'linear-gradient(to bottom, rgba(9,9,11,0.92) 0%, transparent 100%)' }}
       >
-        {/* Brand */}
-        <div className="flex items-center gap-3 pointer-events-auto">
-          <div
-            className="w-8 h-8 flex items-center justify-center rounded-sm flex-shrink-0"
-            style={{ border: '1px solid rgba(0,238,255,0.30)' }}
-          >
-            <div
-              className="w-3 h-3 rotate-45"
-              style={{ border: '1.5px solid rgba(0,238,255,0.65)' }}
-            />
+        {/* Brand — always visible */}
+        <div className="flex items-center gap-3 pointer-events-auto flex-shrink-0">
+          <div className="w-8 h-8 flex items-center justify-center rounded-sm flex-shrink-0"
+            style={{ border: '1px solid rgba(0,238,255,0.30)' }}>
+            <div className="w-3 h-3 rotate-45" style={{ border: '1.5px solid rgba(0,238,255,0.65)' }} />
           </div>
           <div>
-            <h1 className="font-serif text-base tracking-[0.22em] text-white/90 uppercase leading-none">
+            <h1 className="font-serif text-[15px] tracking-[0.22em] text-white/90 uppercase leading-none">
               SynCity
             </h1>
-            <p className="font-mono text-[9px] tracking-[0.28em] text-[#00EEFF]/45 uppercase mt-0.5">
-              Urban Intelligence Platform
+            <p className="font-mono text-[8px] tracking-[0.25em] text-[#00EEFF]/45 uppercase mt-0.5">
+              Urban Intelligence
             </p>
           </div>
         </div>
 
+        {/* Search bar — grows to fill centre */}
+        <div className="flex-1 pointer-events-auto">
+          <SearchBar onSelect={setSearchResult} />
+        </div>
+
         {/* Right meta */}
-        <div className="flex items-center gap-5 pointer-events-auto">
+        <div className="flex items-center gap-4 pointer-events-auto flex-shrink-0">
           <span className="hidden sm:block font-mono text-[11px] text-white/25 tracking-wider">
             {new Date().toLocaleDateString('en-IN', {
               weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
             })}
           </span>
           <div className="flex items-center gap-2">
-            <span
-              className="w-2 h-2 rounded-full bg-[#00EEFF] animate-pulse"
-              style={{ boxShadow: '0 0 7px #00EEFF' }}
-            />
-            <span className="font-mono text-[11px] text-[#00EEFF]/80 tracking-wider uppercase">
-              Live
-            </span>
+            <span className="w-2 h-2 rounded-full bg-[#00EEFF] animate-pulse"
+              style={{ boxShadow: '0 0 7px #00EEFF' }} />
+            <span className="font-mono text-[11px] text-[#00EEFF]/80 tracking-wider uppercase">Live</span>
           </div>
         </div>
       </header>
 
-      {/* ── Left — Layer controls ───────────────────────────────────── */}
+      {/* ── Left — Layer controls + style switcher + directions ────── */}
       <aside className="absolute left-4 top-1/2 -translate-y-1/2 z-20">
-        <LayersControl activeLayers={activeLayers} onToggle={handleToggle} />
+        <LayersControl
+          activeLayers={activeLayers}
+          onToggle={handleToggle}
+          activeStyle={mapStyle}
+          onStyleChange={setMapStyle}
+          onDirections={setDirectionsRequest}
+        />
       </aside>
 
       {/* ── Dashboard mini-badge (top-right corner when panel collapsed) ─ */}
@@ -185,24 +203,26 @@ export default function ExplorePage() {
           scrollbarWidth: 'none',
         }}
       >
+      {/* ── Right — Weather + City stats ───────────────────────────── */}
+      <aside className="absolute right-4 z-20 flex flex-col gap-3"
+        style={{ top: '72px', bottom: '36px', width: '272px' }}>
         <WeatherCard />
         <CityStatsPanel />
         {activeLayers.pollution && <AqiBreakdownCard />}
       </aside>
 
-      {/* ── Bottom gradient + status bar ───────────────────────────── */}
+      {/* ── Bottom status bar ───────────────────────────────────────── */}
       <footer
         className="absolute bottom-0 inset-x-0 z-20 pointer-events-none
                    flex items-center justify-between px-5 py-2.5"
-        style={{
-          background: 'linear-gradient(to top, rgba(9,9,11,0.80) 0%, transparent 100%)',
-        }}
+        style={{ background: 'linear-gradient(to top, rgba(9,9,11,0.80) 0%, transparent 100%)' }}
       >
         <span className="font-mono text-[10px] text-white/25 tracking-widest">
           12.9716°N · 77.5946°E · Bangalore, India
         </span>
         <span className="font-mono text-[10px] text-white/18 tracking-wider">
           © Mapbox · © OpenStreetMap
+          © Mapbox · © OpenStreetMap · © RainViewer
         </span>
       </footer>
 
