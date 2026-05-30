@@ -32,6 +32,16 @@ Thumbs.db
 .claude/worktrees/
 .claude/launch.json.local
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+*.egg
+
 # Misc
 *.log
 npm-debug.log*
