@@ -1,5 +1,11 @@
 # BC-FRAP — Architecture
 
+> **Subordinate document.** The permanent source of truth is
+> [`BC_FRAP_PROJECT_CONSTITUTION.md`](BC_FRAP_PROJECT_CONSTITUTION.md); this file is
+> the operational v0.1 work order. On conflict, the Constitution wins.
+> Amendment via Constitution App. B: PCE-weighted **actuated MaxPressure** is added
+> to the required baseline list in §2.7.
+
 **Bangalore-Calibrated Fairness Reinforcement Adaptive Pressure.**
 Traffic-signal RL for Indian mixed traffic: heterogeneous modal mix (two-wheeler
 dominant), monsoon context, zone-heterogeneous PCE, fairness across modes and
